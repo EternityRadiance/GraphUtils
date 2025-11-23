@@ -1,10 +1,11 @@
 from .GraphService import GraphService
 from .DataTypes import GraphRequest, GraphTags, GraphSize
 
+
 def main():
     # Инициализация сервиса
     graph_service = GraphService()
-    
+
     # Загрузка meta файла
     if not graph_service.download_meta():
         print("Не удалось загрузить meta файл")
@@ -39,10 +40,11 @@ def main():
     print(f"Найдено графов: {len(results4)}")
 
     # Пример скачивания (раскомментируйте для тестирования)
-    # if results1:
-    #     print(f"\n=== Скачивание первых 3 графов ===")
-    #     zip_path = graph_service.download_zip(results1[:3])
-    #     print(f"Файл сохранен: {zip_path}")
+    if results1:
+        print("\n=== Скачивание первых 3 графов ===")
+        zip_path = graph_service.download_zip(results1[:3])
+        print(f"Файл сохранен: {zip_path}")
+
 
 if __name__ == "__main__":
     main()

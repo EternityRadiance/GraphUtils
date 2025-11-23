@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional
 from .DataTypes import GraphRequest, GraphTags, GraphSize
 from .config import REPO_URL, BASE_SAVE_PATH, META_FILE_URL
 
+
 class GraphService:
     def __init__(self):
         self.meta_data: Dict[str, Any] = {}
@@ -21,17 +22,17 @@ class GraphService:
             print(f"Загружаем meta файл из: {META_FILE_URL}")
             response = requests.get(META_FILE_URL)
             response.raise_for_status()
-            
+
             # Выводим первые 500 символов ответа для диагностики
             content_preview = response.text[:500]
             print(f"Полученный ответ (первые 500 символов): {content_preview}")
-            
+
             # Пробуем распарсить JSON
             self.meta_data = response.json()
             self.loaded = True
             print(f"Meta файл успешно загружен. Загружено {len(self.meta_data)} графов")
             return True
-            
+
         except requests.exceptions.RequestException as e:
             print(f"Ошибка при загрузке meta файла: {e}")
             return False
@@ -97,11 +98,11 @@ class GraphService:
         for attr_name in dir(request_tags):
             if attr_name.startswith('_') or attr_name == 'from_dict':
                 continue
-                
+
             request_value = getattr(request_tags, attr_name)
             if request_value is not None:
                 graph_value = graph_properties.get(attr_name)
-                
+
                 if strict:
                     # Строгий поиск: значения должны точно совпадать
                     if request_value != graph_value:
@@ -110,7 +111,7 @@ class GraphService:
                     # Нестрогий поиск: если в графе есть значение, оно должно совпадать
                     if graph_value is not None and request_value != graph_value:
                         return False
-        
+
         return True
 
     def download_zip(self, graph_names: List[str], save_path: Optional[str] = None) -> str:
@@ -138,29 +139,29 @@ class GraphService:
             for graph_name in graph_names:
                 graph_filename = f"{graph_name}.json"
                 graph_url = f"{REPO_URL}/{graph_filename}"
-                
+
                 try:
                     response = requests.get(graph_url)
                     response.raise_for_status()
-                    
+
                     file_path = os.path.join(temp_dir, graph_filename)
                     with open(file_path, 'w', encoding='utf-8') as f:
                         json.dump(response.json(), f, ensure_ascii=False, indent=2)
-                    
+
                     downloaded_files.append(file_path)
                     print(f"Успешно скачан: {graph_filename}")
-                    
+
                 except requests.exceptions.RequestException as e:
                     print(f"Ошибка при скачивании {graph_filename}: {e}")
 
             # Создаем zip архив
             zip_filename = f"graphs_{len(graph_names)}_files.zip"
             zip_path = os.path.join(save_path, zip_filename)
-            
+
             with zipfile.ZipFile(zip_path, 'w') as zipf:
                 for file_path in downloaded_files:
                     zipf.write(file_path, os.path.basename(file_path))
-            
+
             print(f"Zip архив создан: {zip_path}")
             return zip_path
 
