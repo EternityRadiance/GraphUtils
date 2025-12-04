@@ -293,7 +293,7 @@ class GraphSearchApp:
                 "pseudo": self.pseudo_var.get()
             }
         }
-        self.logger.info(f"Выполнение поиска с параметрами: {search_params}")
+        # self.logger.info(f"Выполнение поиска с параметрами: {search_params}")
 
         # Создаем GraphTags из выбранных свойств
         tags = GraphTags(
