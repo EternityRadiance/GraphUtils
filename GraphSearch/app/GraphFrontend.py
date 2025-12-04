@@ -3,7 +3,6 @@ from tkinter import ttk, messagebox, filedialog
 import threading
 import logging
 import os
-from datetime import datetime
 from typing import List
 
 from app.GraphService import GraphService

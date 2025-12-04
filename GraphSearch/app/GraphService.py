@@ -22,11 +22,7 @@ class GraphService:
             print(f"Загружаем meta файл из: {META_FILE_URL}")
             response = requests.get(META_FILE_URL)
             response.raise_for_status()
-
-            # Выводим первые 500 символов ответа для диагностики
-            content_preview = response.text[:500]
-            print(f"Полученный ответ (первые 500 символов): {content_preview}")
-
+ 
             # Пробуем распарсить JSON
             self.meta_data = response.json()
             self.loaded = True
