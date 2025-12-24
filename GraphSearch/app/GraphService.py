@@ -1,6 +1,7 @@
 import json
 import requests
 import os
+import shutil
 import zipfile
 from typing import List, Dict, Any, Optional
 
@@ -120,12 +121,13 @@ class GraphService:
 
         if save_path is None:
             save_path = BASE_SAVE_PATH
+        save_directory = os.path.dirname(save_path) + os.sep
 
         # Создаем директорию для сохранения, если её нет
-        os.makedirs(save_path, exist_ok=True)
+        os.makedirs(save_directory, exist_ok=True)
 
         # Временная директория для скачанных файлов
-        temp_dir = os.path.join(save_path, "temp_graphs")
+        temp_dir = os.path.join(save_directory, ".temp_graphs")
         os.makedirs(temp_dir, exist_ok=True)
 
         downloaded_files = []
@@ -152,7 +154,7 @@ class GraphService:
 
             # Создаем zip архив
             zip_filename = f"graphs_{len(graph_names)}_files.zip"
-            zip_path = os.path.join(save_path, zip_filename)
+            zip_path = os.path.join(save_directory, zip_filename)
 
             with zipfile.ZipFile(zip_path, 'w') as zipf:
                 for file_path in downloaded_files:
@@ -163,14 +165,10 @@ class GraphService:
 
         finally:
             # Очищаем временные файлы
-            for file_path in downloaded_files:
-                try:
-                    os.remove(file_path)
-                except OSError:
-                    pass
             try:
-                os.rmdir(temp_dir)
+                shutil.rmtree(temp_dir)
             except OSError:
+                print(f"Не удалось удалить временную директорию {temp_dir}: {e}")
                 pass
 
     def get_graph_info(self, graph_name: str) -> Optional[Dict[str, Any]]:
@@ -191,7 +189,7 @@ class GraphService:
     def load_meta_from_file(self, file_path: str) -> bool:
         """
         Альтернативный метод: загрузка meta файла из локального файла
-        Полезно для тестирования
+        для тестирования
         """
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
