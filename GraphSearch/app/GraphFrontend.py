@@ -75,9 +75,21 @@ class GraphSearchApp:
 
     def toggle_console(self):
         """Переключение видимости консоли"""
-        if self.console:
-            self.console.toggle_visibility()
-            log_system("Видимость консоли переключена")
+        try:
+            if self.console:
+                self.console.toggle_visibility()
+                log_system("Видимость консоли переключена")
+        except Exception as e:
+            # Если произошла ошибка, пересоздаем консоль
+            print(f"Ошибка при переключении консоли: {e}")
+            try:
+                # Пересоздаем консоль
+                from app.ConsoleWidget import init_console
+                self.console = init_console()
+                self.console.show()
+                log_system("Консоль пересоздана")
+            except Exception as e2:
+                print(f"Не удалось пересоздать консоль: {e2}")
 
     def setup_styles(self):
         """Настройка стилей с использованием конфига"""
