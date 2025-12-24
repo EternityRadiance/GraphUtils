@@ -2,7 +2,6 @@
 Виджет консоли для отображения логов и статусов
 """
 import tkinter as tk
-from tkinter import scrolledtext
 from datetime import datetime
 import threading
 from typing import Optional
