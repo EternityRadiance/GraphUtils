@@ -8,22 +8,142 @@ from explorer import GraphExplorer
 from graph_models import Graph
 
 
+# Розово-лавандовая цветовая палитра
+COLORS = {
+    'bg_main': '#F5F0FF',
+    'bg_panel': '#FFFFFF',
+    'bg_canvas': '#FFFFFF',
+    'accent': '#D8BFD8',
+    'accent_dark': '#B19CD9',
+    'text': '#333333',
+    'text_light': '#666666',
+    'border': '#E6E6FA',
+    'button_bg': '#D8BFD8',
+    'button_fg': '#333333',
+    'button_hover': '#B19CD9',
+    'vertex_normal': '#D8BFD8',
+    'vertex_selected': '#FFD700',
+    'edge_normal': '#9370DB',
+    'edge_selected': '#FFD700',
+    'animation_pulse': '#FF6B9D',
+    'glow_effect': '#FFFACD',
+}
+
+
+class StyledButton(tk.Canvas):
+    """Стилизованная кнопка с простыми анимациями"""
+    def __init__(self, master, text, command, width=200, height=40, **kwargs):
+        super().__init__(master, width=width, height=height, 
+                         highlightthickness=0, bd=0, bg=COLORS['bg_main'])
+        self.command = command
+        self.button_text = text
+
+        # Сохраняем размеры
+        self.button_width = width
+        self.button_height = height
+
+        # Простая анимация цвета
+        self.current_color = COLORS['button_bg']
+        self.animation = None
+
+        # Отрисовываем кнопку после создания
+        self.after(10, self.draw_button)
+
+        # Привязка событий
+        self.bind("<ButtonPress-1>", self.on_press)
+        self.bind("<ButtonRelease-1>", self.on_release)
+        self.bind("<Enter>", self.on_enter)
+        self.bind("<Leave>", self.on_leave)
+
+    def draw_button(self):
+        """Рисует кнопку"""
+        self.delete("all")
+
+        # Используем сохраненные размеры
+        width = self.button_width
+        height = self.button_height
+
+        # Простой прямоугольник с закругленными углами
+        self.create_rectangle(0, 0, width, height, 
+                             fill=self.current_color, 
+                             outline=COLORS['border'], 
+                             width=1)
+
+        # Текст
+        font_size = 11
+        self.create_text(width//2, height//2, 
+                        text=self.button_text, 
+                        font=('Arial', font_size, 'bold'),
+                        fill=COLORS['button_fg'])
+
+    def animate_color(self, target_color, steps=10):
+        """Простая анимация цвета"""
+        if self.animation:
+            self.after_cancel(self.animation)
+
+        start_r, start_g, start_b = self.hex_to_rgb(self.current_color)
+        target_r, target_g, target_b = self.hex_to_rgb(target_color)
+
+        step = 0
+        def animate():
+            nonlocal step
+            if step >= steps:
+                self.current_color = target_color
+                self.draw_button()
+                return
+
+            progress = step / steps
+            r = int(start_r + (target_r - start_r) * progress)
+            g = int(start_g + (target_g - start_g) * progress)
+            b = int(start_b + (target_b - start_b) * progress)
+
+            self.current_color = f'#{r:02x}{g:02x}{b:02x}'
+            self.draw_button()
+
+            step += 1
+            self.animation = self.after(20, animate)
+
+        animate()
+
+    def hex_to_rgb(self, hex_color):
+        """Конвертирует HEX цвет в RGB"""
+        hex_color = hex_color.lstrip('#')
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+    def on_press(self, event):
+        """Нажатие кнопки"""
+        self.animate_color(COLORS['accent_dark'], 5)
+
+    def on_release(self, event):
+        """Отпускание кнопки"""
+        self.animate_color(COLORS['button_bg'], 10)
+        if self.command:
+            self.after(100, self.command)
+
+    def on_enter(self, event):
+        """Наведение курсора"""
+        self.animate_color(COLORS['button_hover'], 5)
+
+    def on_leave(self, event):
+        """Уход курсора"""
+        self.animate_color(COLORS['button_bg'], 10)
+
+
 class GraphCanvas(tk.Canvas):
-    """Canvas для отрисовки графов с управлением как в PyGame версии"""
+    """Canvas для отрисовки графов с улучшенными анимациями"""
 
     def __init__(self, master, on_vertex_selected=None, on_edge_selected=None, on_deselect=None, **kwargs):
         super().__init__(master, **kwargs)
-        self.configure(bg='white', highlightthickness=0)
+        self.configure(bg=COLORS['bg_canvas'], highlightthickness=0)
 
         # Данные графа
         self.graph = None
         self.vertices = []
         self.edges = []
         self.vertex_positions = {}
-        self.vertex_radius = 15
         self.edge_weights = {}
 
-        # Состояние взаимодействия (как в PyGame)
+        # Состояние взаимодействия
         self.scale = 1.0
         self.offset_x = 0
         self.offset_y = 0
@@ -35,9 +155,13 @@ class GraphCanvas(tk.Canvas):
         self.selected_vertex = None
         self.selected_edge = None
 
-        # Оптимизация для больших графов
-        self.show_labels = True
-        self.simplified_view = False
+        # Анимации
+        self.active_animations = []
+        self.vertex_animations = {}
+        self.edge_animations = {}
+
+        # Эффекты
+        self.glow_effects = {}
 
         # Callback'и
         self.on_vertex_selected_callback = on_vertex_selected
@@ -55,180 +179,310 @@ class GraphCanvas(tk.Canvas):
         self.bind("<Button-4>", self.on_mouse_wheel)
         self.bind("<Button-5>", self.on_mouse_wheel)
 
-        # Кэш для подписей вершин (для оптимизации)
-        self.vertex_labels = {}
-
     def load_graph(self, graph: Graph):
-        """Загружает граф и отрисовывает его"""
+        """Загружает граф с улучшенной анимацией"""
+        # Останавливаем все текущие анимации
+        self.stop_all_animations()
+
         self.graph = graph
         self.vertices = list(range(1, graph.vertices + 1))
         self.edges = graph.edges_list
         self.vertex_positions = {}
-        self.vertex_labels.clear()  # Очищаем кэш подписей
-
-        # Извлечение весов ребер
         self.edge_weights = {}
+
+        # Сбрасываем состояния
+        self.vertex_animations = {}
+        self.edge_animations = {}
+        self.glow_effects = {}
+
         for edge in self.edges:
             if 'weight' in edge:
                 key = (edge['source'], edge['target'])
                 self.edge_weights[key] = edge['weight']
 
-        # Автоматическое расположение вершин как в PyGame версии
         self.arrange_vertices()
-
         self.selected_vertex = None
         self.selected_edge = None
 
+        # Запускаем анимацию появления
+        self.start_appearance_animation()
+
+    def start_appearance_animation(self):
+        """Запускает анимацию появления графа"""
+        self.delete("all")
+
+        # Получаем целевые позиции
+        target_positions = self.vertex_positions.copy()
+
+        # Определяем центр canvas
+        center_x = self.winfo_width() / 2 if self.winfo_width() > 10 else 500
+        center_y = self.winfo_height() / 2 if self.winfo_height() > 10 else 350
+
+        # Устанавливаем все вершины в центре для начала анимации
+        start_positions = {}
+        for vertex in self.vertices:
+            start_positions[vertex] = (center_x, center_y)
+
+        # Сохраняем начальные позиции
+        self.vertex_positions = start_positions.copy()
+
+        # Рисуем все вершины в центре
         self.redraw_graph()
 
+        # Анимируем движение вершин
+        self.animate_vertices_to_target(target_positions)
+
+    def animate_vertices_to_target(self, target_positions):
+        """Анимирует движение вершин к целевым позициям"""
+        start_positions = self.vertex_positions.copy()
+        steps = 60
+        current_step = 0
+
+        def animate_step():
+            nonlocal current_step
+            if current_step >= steps:
+                # Анимация завершена, запускаем анимацию ребер
+                self.animate_edges_appearance()
+                return
+
+            progress = current_step / steps
+
+            # Используем easing функцию для плавного движения
+            ease_progress = progress * progress * (3 - 2 * progress)  # Кубический easing
+
+            # Перемещаем каждую вершину
+            for vertex in self.vertices:
+                if vertex in start_positions and vertex in target_positions:
+                    start_x, start_y = start_positions[vertex]
+                    target_x, target_y = target_positions[vertex]
+
+                    x = start_x + (target_x - start_x) * ease_progress
+                    y = start_y + (target_y - start_y) * ease_progress
+
+                    self.vertex_positions[vertex] = (x, y)
+
+            # Перерисовываем
+            self.redraw_graph()
+
+            current_step += 1
+            anim_id = self.after(30, animate_step)
+            self.active_animations.append(anim_id)
+
+        animate_step()
+
+    def animate_edges_appearance(self):
+        """Анимированное появление ребер"""
+        # Сначала показываем все вершины
+        self.delete("all")
+        self.redraw_vertices_only()
+
+        # Небольшая пауза перед появлением ребер
+        self.after(200, self.animate_edges_drawing)
+
+    def animate_edges_drawing(self):
+        """Анимация рисования ребер"""
+        total_edges = len(self.edges)
+
+        # Рисуем все вершины в нормальном состоянии
+        self.redraw_vertices_only()
+
+        # Анимация ребер
+        def draw_edges_wave(batch_start=0):
+            if batch_start >= total_edges:
+                # Все ребра нарисованы
+                return
+
+            # Рисуем группу ребер
+            batch_size = min(2, total_edges - batch_start)
+            for i in range(batch_start, batch_start + batch_size):
+                edge = self.edges[i]
+                self.animate_edge_drawing(edge, i)
+
+            # Рекурсивно рисуем следующую группу
+            delay = 150  # Задержка между группами
+            anim_id = self.after(delay, lambda: draw_edges_wave(batch_start + batch_size))
+            self.active_animations.append(anim_id)
+
+        draw_edges_wave()
+
+    def animate_edge_drawing(self, edge, edge_index):
+        """Анимация рисования одного ребра"""
+        source = edge['source']
+        target = edge['target']
+
+        if source not in self.vertex_positions or target not in self.vertex_positions:
+            return
+
+        start_pos = self.vertex_positions[source]
+        end_pos = self.vertex_positions[target]
+
+        start_x = (start_pos[0] + self.offset_x) * self.scale
+        start_y = (start_pos[1] + self.offset_y) * self.scale
+        end_x = (end_pos[0] + self.offset_x) * self.scale
+        end_y = (end_pos[1] + self.offset_y) * self.scale
+
+        # Вычисляем точки на границах вершин (не в центре)
+        radius = 15  # Радиус вершины
+
+        if source == target:
+            # Для петель
+            self.animate_loop_drawing(start_x, start_y, edge_index)
+        else:
+            # Для обычных ребер
+            dx = end_x - start_x
+            dy = end_y - start_y
+            distance = math.sqrt(dx*dx + dy*dy)
+
+            if distance > 0:
+                # Нормализуем вектор
+                dx_norm = dx / distance
+                dy_norm = dy / distance
+
+                # Точки на границах вершин
+                adjusted_start_x = start_x + dx_norm * radius
+                adjusted_start_y = start_y + dy_norm * radius
+                adjusted_end_x = end_x - dx_norm * radius
+                adjusted_end_y = end_y - dy_norm * radius
+
+                self.animate_line_drawing(adjusted_start_x, adjusted_start_y, 
+                                         adjusted_end_x, adjusted_end_y, edge_index)
+
+    def animate_line_drawing(self, start_x, start_y, end_x, end_y, edge_index):
+        """Анимация рисования линии ребра"""
+        steps = 20
+        current_step = 0
+
+        def draw_line_step():
+            nonlocal current_step
+            if current_step >= steps:
+                # После завершения анимации рисуем постоянное ребро
+                self.create_line(start_x, start_y, end_x, end_y,
+                               fill=COLORS['edge_normal'], width=2,
+                               tags=f"edge_{edge_index}")
+                return
+
+            progress = current_step / steps
+
+            # Текущая позиция конца линии
+            current_x = start_x + (end_x - start_x) * progress
+            current_y = start_y + (end_y - start_y) * progress
+
+            # Цвет меняется во время анимации
+            if progress < 0.3:
+                color = COLORS['animation_pulse']
+            elif progress < 0.7:
+                # Промежуточный цвет
+                r = int(0xFF * (1 - progress/0.7) + 0x93 * (progress/0.7))
+                g = int(0x6B * (1 - progress/0.7) + 0x70 * (progress/0.7))
+                b = int(0x9D * (1 - progress/0.7) + 0xDB * (progress/0.7))
+                color = f'#{r:02x}{g:02x}{b:02x}'
+            else:
+                color = COLORS['edge_normal']
+
+            # Рисуем линию
+            line_width = 3 if progress < 0.8 else 2
+
+            self.create_line(start_x, start_y, current_x, current_y,
+                           fill=color, width=line_width,
+                           tags=f"edge_temp_{edge_index}")
+
+            current_step += 1
+            anim_id = self.after(30, draw_line_step)
+            self.active_animations.append(anim_id)
+
+        draw_line_step()
+
+    def animate_loop_drawing(self, x, y, edge_index):
+        """Анимация рисования петли"""
+        steps = 25
+        current_step = 0
+        loop_width = 18 * self.scale
+        loop_height = 25 * self.scale
+
+        # Для петель используем точку на границе вершины
+        loop_start_x = x
+        loop_start_y = y - 15  # Начинаем от верхней границы вершины
+        
+        def draw_loop_step():
+            nonlocal current_step
+            if current_step >= steps:
+                # Рисуем финальную петлю
+                loop_rect = (
+                    x - loop_width / 2,
+                    y - loop_height,
+                    x + loop_width / 2,
+                    y - 15  # Заканчиваем у верхней границы вершины
+                )
+                self.create_oval(loop_rect, outline=COLORS['edge_normal'], width=2,
+                               tags=f"edge_{edge_index}")
+                return
+            
+            progress = current_step / steps
+            
+            # Анимируем рисование петли от 0 до 360 градусов
+            angle = 2 * math.pi * progress
+            
+            # Вычисляем точки для части петли
+            points = []
+            for i in range(int(progress * 24) + 1):
+                partial_angle = angle * (i / 24)
+                px = x + (loop_width / 2) * math.cos(partial_angle)
+                py = y - 15 - loop_height + (loop_height / 2) * math.sin(partial_angle)
+                points.extend([px, py])
+            
+            if len(points) >= 4:
+                # Цвет меняется во время анимации
+                if progress < 0.5:
+                    color = COLORS['animation_pulse']
+                else:
+                    color = COLORS['edge_normal']
+                
+                self.create_line(points, fill=color, width=2,
+                               tags=f"edge_temp_{edge_index}", smooth=True)
+            
+            current_step += 1
+            anim_id = self.after(40, draw_loop_step)
+            self.active_animations.append(anim_id)
+        
+        draw_loop_step()
+
+    def redraw_vertices_only(self):
+        """Рисует только вершины (для анимации)"""
+        for vertex, pos in self.vertex_positions.items():
+            x = (pos[0] + self.offset_x) * self.scale
+            y = (pos[1] + self.offset_y) * self.scale
+            
+            # Цвет вершины
+            if vertex == self.selected_vertex:
+                vertex_color = COLORS['vertex_selected']
+                border_width = 2
+            else:
+                vertex_color = COLORS['vertex_normal']
+                border_width = 1
+            
+            # Рисуем вершину
+            self.create_oval(x - 15, y - 15,
+                           x + 15, y + 15,
+                           fill=vertex_color,
+                           outline='black',
+                           width=border_width)
+            
+            # Подпись
+            self.create_text(x, y, text=str(vertex),
+                           fill='white',
+                           font=('Arial', 12, 'bold'))
+
     def arrange_vertices(self):
-        """Автоматическое расположение вершин как в PyGame версии"""
+        """Расположение вершин"""
         self.vertex_positions = {}
         num_vertices = len(self.vertices)
 
-        # Определяем размеры canvas
         width = self.winfo_width() or 1000
         height = self.winfo_height() or 700
 
-        GRAPH_AREA_WIDTH = width
-        GRAPH_AREA_HEIGHT = height
-
-        # Для очень больших графов используем случайное расположение
-        if num_vertices > 1000:
-            import random
-            positions = set()
-            min_distance = 50
-
-            for vertex in self.vertices:
-                attempts = 0
-                while attempts < 100:
-                    x = random.uniform(50, GRAPH_AREA_WIDTH - 50)
-                    y = random.uniform(50, GRAPH_AREA_HEIGHT - 50)
-
-                    too_close = False
-                    for pos in positions:
-                        if math.sqrt((x - pos[0]) ** 2 + (y - pos[1]) ** 2) < min_distance:
-                            too_close = True
-                            break
-
-                    if not too_close:
-                        self.vertex_positions[vertex] = (x, y)
-                        positions.add((x, y))
-                        break
-                    attempts += 1
-
-                if vertex not in self.vertex_positions:
-                    x = random.uniform(50, GRAPH_AREA_WIDTH - 50)
-                    y = random.uniform(50, GRAPH_AREA_HEIGHT - 50)
-                    self.vertex_positions[vertex] = (x, y)
-            return
-
-        # Для деревьев
-        if self.is_tree():
-            self.arrange_tree(GRAPH_AREA_WIDTH, GRAPH_AREA_HEIGHT)
-            return
-
-        # Для двудольных графов
-        if self.is_bipartite():
-            left_col = []
-            right_col = []
-
-            for i, vertex in enumerate(self.vertices):
-                if i % 2 == 0:
-                    left_col.append(vertex)
-                else:
-                    right_col.append(vertex)
-
-            # Располагаем с отступами
-            for i, vertex in enumerate(left_col):
-                x = GRAPH_AREA_WIDTH * 0.25
-                y = GRAPH_AREA_HEIGHT * (i + 1) / (len(left_col) + 1)
-                self.vertex_positions[vertex] = (x, y)
-
-            for i, vertex in enumerate(right_col):
-                x = GRAPH_AREA_WIDTH * 0.75
-                y = GRAPH_AREA_HEIGHT * (i + 1) / (len(right_col) + 1)
-                self.vertex_positions[vertex] = (x, y)
-        else:
-            # По умолчанию - расположение по кругу
-            self.arrange_vertices_circle(GRAPH_AREA_WIDTH, GRAPH_AREA_HEIGHT)
-
-    def arrange_tree(self, width, height):
-        """Расположение для деревьев как в PyGame"""
-        tree = self.build_tree_structure()
-        root = self.find_tree_root(tree)
-
-        # BFS для определения уровней
-        levels = defaultdict(list)
-        visited = set()
-        queue = deque([(root, 0)])
-
-        while queue:
-            node, level = queue.popleft()
-            if node in visited:
-                continue
-
-            visited.add(node)
-            levels[level].append(node)
-
-            for neighbor in tree[node]:
-                if neighbor not in visited:
-                    queue.append((neighbor, level + 1))
-
-        # Располагаем вершины по уровням
-        max_level = max(levels.keys()) if levels else 0
-
-        for level in range(max_level + 1):
-            vertices_in_level = levels[level]
-            level_height = height * (level + 1) / (max_level + 2)
-
-            for i, vertex in enumerate(vertices_in_level):
-                level_width = width / (len(vertices_in_level) + 1)
-                x = level_width * (i + 1)
-                y = level_height
-                self.vertex_positions[vertex] = (x, y)
-
-    def build_tree_structure(self):
-        """Строит структуру дерева из ребер"""
-        tree = defaultdict(list)
-        for edge in self.edges:
-            tree[edge['source']].append(edge['target'])
-            tree[edge['target']].append(edge['source'])
-        return tree
-
-    def find_tree_root(self, tree):
-        """Находит корень дерева"""
-        if not tree:
-            return self.vertices[0] if self.vertices else 1
-
-        max_degree = -1
-        root = self.vertices[0]
-        for vertex in self.vertices:
-            degree = len(tree[vertex])
-            if degree > max_degree:
-                max_degree = degree
-                root = vertex
-        return root
-
-    def arrange_vertices_circle(self, width, height):
-        """Расположение по кругу как в PyGame"""
         center_x = width / 2
         center_y = height / 2
-
-        # Динамический радиус
-        base_radius = min(width, height) * 0.4
-
-        # Увеличиваем радиус для больших графов
-        if len(self.vertices) > 50:
-            base_radius *= 2.0
-        if len(self.vertices) > 100:
-            base_radius *= 2.5
-        if len(self.vertices) > 200:
-            base_radius *= 3.0
-        if len(self.vertices) > 500:
-            base_radius *= 4.0
-
-        radius = base_radius
+        radius = min(width, height) * 0.35
 
         for i, vertex in enumerate(self.vertices):
             angle = 2 * math.pi * i / len(self.vertices)
@@ -236,48 +490,14 @@ class GraphCanvas(tk.Canvas):
             y = center_y + radius * math.sin(angle)
             self.vertex_positions[vertex] = (x, y)
 
-    def is_bipartite(self):
-        if not self.graph:
-            return False
-        properties = getattr(self.graph, 'properties', {})
-        if hasattr(properties, 'double'):
-            return properties.double
-        return False
-
-    def is_tree(self):
-        if not self.graph:
-            return False
-        properties = getattr(self.graph, 'properties', {})
-        if hasattr(properties, 'tree'):
-            return properties.tree
-        return False
-
-    def is_directed(self):
-        if not self.graph:
-            return False
-        properties = getattr(self.graph, 'properties', {})
-        if hasattr(properties, 'directed'):
-            return properties.directed
-        return False
-
-    def is_weighted(self):
-        if not self.graph:
-            return False
-        properties = getattr(self.graph, 'properties', {})
-        if hasattr(properties, 'weighted'):
-            return properties.weighted
-        return any('weight' in edge for edge in self.edges)
-
     def redraw_graph(self):
-        """Перерисовывает весь граф"""
+        """Перерисовывает граф"""
         self.delete("all")
 
         if not self.graph or not self.vertex_positions:
             return
 
-        is_large_graph = len(self.vertices) > 500
-
-        # Сначала рисуем все ребра
+        # Сначала рисуем ребра
         for i, edge in enumerate(self.edges):
             source = edge['source']
             target = edge['target']
@@ -286,27 +506,21 @@ class GraphCanvas(tk.Canvas):
                 start_pos = self.vertex_positions[source]
                 end_pos = self.vertex_positions[target]
 
-                # Применяем трансформации
                 start_x = (start_pos[0] + self.offset_x) * self.scale
                 start_y = (start_pos[1] + self.offset_y) * self.scale
                 end_x = (end_pos[0] + self.offset_x) * self.scale
                 end_y = (end_pos[1] + self.offset_y) * self.scale
 
-                # Цвет ребра: синий для обычных, желтый для выделенных
                 if self.selected_edge == i:
-                    edge_color = 'yellow'
-                    edge_width = 4
+                    edge_color = COLORS['edge_selected']
+                    edge_width = 3
                 else:
-                    # ВСЕ невыделенные ребра синего цвета
-                    edge_color = 'blue'
-                    edge_width = 2 if is_large_graph else 3
+                    edge_color = COLORS['edge_normal']
+                    edge_width = 2
 
-                # Обработка петель
                 if source == target:
-                    # Рисуем эллипс (каплю) над вершиной
                     loop_width = 18 * self.scale
                     loop_height = 25 * self.scale
-
                     loop_rect = (
                         start_x - loop_width / 2,
                         start_y - loop_height,
@@ -315,130 +529,95 @@ class GraphCanvas(tk.Canvas):
                     )
                     self.create_oval(loop_rect, outline=edge_color, width=edge_width)
                 else:
-                    # Обычное ребро
-                    self.create_line(start_x, start_y, end_x, end_y,
-                                     fill=edge_color, width=edge_width)
+                    # Вычисляем точки на границах вершин
+                    radius = 15
+                    dx = end_x - start_x
+                    dy = end_y - start_y
+                    distance = math.sqrt(dx*dx + dy*dy)
+                    
+                    if distance > 0:
+                        # Нормализуем вектор
+                        dx_norm = dx / distance
+                        dy_norm = dy / distance
+                        
+                        # Точки на границах вершин
+                        adjusted_start_x = start_x + dx_norm * radius
+                        adjusted_start_y = start_y + dy_norm * radius
+                        adjusted_end_x = end_x - dx_norm * radius
+                        adjusted_end_y = end_y - dy_norm * radius
+                        
+                        self.create_line(adjusted_start_x, adjusted_start_y, 
+                                       adjusted_end_x, adjusted_end_y,
+                                       fill=edge_color, width=edge_width)
 
-                    # Для направленных графов рисуем стрелку того же цвета
-                    if self.is_directed() and not is_large_graph:
-                        self.draw_arrow(start_x, start_y, end_x, end_y, edge_color)
-
-        # Затем рисуем вершины поверх ребер
+        # Рисуем вершины поверх ребер
         for vertex, pos in self.vertex_positions.items():
             x = (pos[0] + self.offset_x) * self.scale
             y = (pos[1] + self.offset_y) * self.scale
 
-            # Выбираем цвет вершины
             if vertex == self.selected_vertex:
-                vertex_color = 'yellow'
-                border_color = 'black'
-                border_width = 3
+                vertex_color = COLORS['vertex_selected']
+                border_width = 2
+                
+                # Статичное свечение для выбранной вершины
+                self.create_oval(x-22, y-22, x+22, y+22,
+                               outline='#FFD700',
+                               width=2)
+                self.create_oval(x-25, y-25, x+25, y+25,
+                               outline='#FFFACD',
+                               width=1)
             else:
-                if is_large_graph:
-                    vertex_color = 'red'
-                elif self.is_bipartite():
-                    vertex_color = 'red' if vertex % 2 == 0 else 'blue'
-                elif self.is_tree():
-                    vertex_color = 'green'
-                else:
-                    vertex_color = 'red'
-                border_color = 'black'
+                vertex_color = COLORS['vertex_normal']
                 border_width = 1
 
-            # Радиус вершины с учетом масштаба
-            if is_large_graph:
-                vertex_radius = max(3, int(8 * self.scale))
-            else:
-                vertex_radius = max(10, int(15 * self.scale))
+            self.create_oval(x - 15, y - 15,
+                           x + 15, y + 15,
+                           fill=vertex_color,
+                           outline='black',
+                           width=border_width)
 
-            # Рисуем вершину
-            self.create_oval(x - vertex_radius, y - vertex_radius,
-                             x + vertex_radius, y + vertex_radius,
-                             fill=vertex_color, outline=border_color,
-                             width=border_width, tags=f'vertex_{vertex}')
-
-            # Подпись вершины с правильным масштабированием
-            if (not is_large_graph) or (is_large_graph and len(self.vertices) <= 1000):
-                # Рассчитываем размер шрифта в зависимости от масштаба и размера вершины
-                if is_large_graph:
-                    base_font_size = 12
-                else:
-                    base_font_size = 24
-
-                # Ограничиваем минимальный и максимальный размер шрифта
-                font_size = int(base_font_size * min(max(self.scale, 0.5), 2.0))
-                font_size = max(8, min(font_size, 36))  # Ограничиваем от 8 до 36
-
-                # Создаем текст
-                text_id = self.create_text(x, y, text=str(vertex),
-                                           fill='white',
-                                           font=('Arial', font_size),
-                                           tags=f'label_{vertex}')
-                self.vertex_labels[vertex] = text_id
-
-    def draw_arrow(self, start_x, start_y, end_x, end_y, color):
-        """Рисует стрелку для направленного ребра"""
-        angle = math.atan2(end_y - start_y, end_x - start_x)
-        arrow_length = 15 * self.scale
-
-        tip_x = end_x - arrow_length * math.cos(angle)
-        tip_y = end_y - arrow_length * math.sin(angle)
-
-        left_x = tip_x - arrow_length * 0.5 * math.cos(angle - math.pi / 6)
-        left_y = tip_y - arrow_length * 0.5 * math.sin(angle - math.pi / 6)
-        right_x = tip_x - arrow_length * 0.5 * math.cos(angle + math.pi / 6)
-        right_y = tip_y - arrow_length * 0.5 * math.sin(angle + math.pi / 6)
-
-        self.create_polygon(end_x, end_y, left_x, left_y, right_x, right_y,
-                            fill=color, outline=color)
+            self.create_text(x, y, text=str(vertex),
+                           fill='white',
+                           font=('Arial', 12, 'bold'))
 
     def on_mouse_down(self, event):
-        """Обработчик нажатия кнопки мыши"""
+        """Нажатие мыши"""
         self.last_mouse_pos = (event.x, event.y)
 
-        # Проверяем, кликнули ли на вершину
         clicked_vertex = None
         graph_mouse_x = (event.x / self.scale) - self.offset_x
         graph_mouse_y = (event.y / self.scale) - self.offset_y
 
         for vertex, pos in self.vertex_positions.items():
             distance = math.sqrt((graph_mouse_x - pos[0]) ** 2 + (graph_mouse_y - pos[1]) ** 2)
-            vertex_radius = 15 if len(self.vertices) <= 500 else 8
-            if distance <= vertex_radius * 1.5:  # Небольшой запас
+            if distance <= 15:
                 clicked_vertex = vertex
                 break
 
         if clicked_vertex is not None:
-            # Клик по вершине - начинаем перетаскивание
             self.dragging_vertex = clicked_vertex
         else:
-            # Если не кликнули на вершину, начинаем перетаскивание всего графа
             self.dragging = True
 
     def on_mouse_up(self, event):
-        """Обработчик отпускания кнопки мыши"""
+        """Отпускание мыши"""
         self.dragging = False
         self.dragging_vertex = None
 
     def on_mouse_drag(self, event):
-        """Обработчик перемещения мыши с зажатой кнопкой"""
+        """Перетаскивание"""
         dx = event.x - self.last_mouse_pos[0]
         dy = event.y - self.last_mouse_pos[1]
 
         if self.dragging_vertex:
-            # Перемещаем вершину
             vertex = self.dragging_vertex
             if vertex in self.vertex_positions:
                 x, y = self.vertex_positions[vertex]
-                # Преобразуем смещение из экранных в координаты графа
                 new_x = x + dx / self.scale
                 new_y = y + dy / self.scale
                 self.vertex_positions[vertex] = (new_x, new_y)
-
-                # Перерисовываем граф
                 self.redraw_graph()
         elif self.dragging:
-            # Перемещаем весь граф
             self.offset_x += dx / self.scale
             self.offset_y += dy / self.scale
             self.redraw_graph()
@@ -446,29 +625,24 @@ class GraphCanvas(tk.Canvas):
         self.last_mouse_pos = (event.x, event.y)
 
     def on_right_click(self, event):
-        """Обработчик правого клика для выбора элементов"""
-        # Сначала проверяем вершины
+        """Правый клик для выбора"""
         clicked_vertex = None
         graph_mouse_x = (event.x / self.scale) - self.offset_x
         graph_mouse_y = (event.y / self.scale) - self.offset_y
 
         for vertex, pos in self.vertex_positions.items():
             distance = math.sqrt((graph_mouse_x - pos[0]) ** 2 + (graph_mouse_y - pos[1]) ** 2)
-            vertex_radius = 15 if len(self.vertices) <= 500 else 8
-            if distance <= vertex_radius * 1.5:
+            if distance <= 15:
                 clicked_vertex = vertex
                 break
 
         if clicked_vertex is not None:
-            # Клик по вершине
             if self.selected_vertex == clicked_vertex:
-                # Снимаем выделение при повторном клике
                 self.deselect_all()
             else:
-                self.select_vertex(clicked_vertex)
+                self.animate_selection(clicked_vertex, None)
             return
 
-        # Если не попали по вершине, проверяем ребра
         closest_edge = None
         min_distance = float('inf')
 
@@ -480,91 +654,322 @@ class GraphCanvas(tk.Canvas):
                 x1, y1 = self.vertex_positions[source]
                 x2, y2 = self.vertex_positions[target]
 
-                # Проверка на петлю
-                if source == target:
-                    # Для петель проверяем расстояние до эллипса
-                    loop_center_x = x1
-                    loop_center_y = y1 - 12.5  # Смещение центра эллипса
+                distance = self.point_to_line_distance(graph_mouse_x, graph_mouse_y,
+                                                     x1, y1, x2, y2)
 
-                    # Простая проверка расстояния до центра петли
-                    distance = math.sqrt((graph_mouse_x - loop_center_x) ** 2 +
-                                         (graph_mouse_y - loop_center_y) ** 2)
-
-                    if distance < 20 and distance < min_distance:
-                        min_distance = distance
-                        closest_edge = i
-                else:
-                    # Для обычных ребер вычисляем расстояние до отрезка
-                    distance = self.point_to_line_distance(graph_mouse_x, graph_mouse_y,
-                                                           x1, y1, x2, y2)
-
-                    if distance < 25 and distance < min_distance:
-                        min_distance = distance
-                        closest_edge = i
+                if distance < 20 and distance < min_distance:
+                    min_distance = distance
+                    closest_edge = i
 
         if closest_edge is not None:
-            # Клик по ребру
             if self.selected_edge == closest_edge:
-                # Снимаем выделение при повторном клике
                 self.deselect_all()
             else:
-                self.select_edge(closest_edge)
+                self.animate_selection(None, closest_edge)
         else:
-            # Клик в пустое место
             self.deselect_all()
 
+    def animate_selection(self, vertex, edge):
+        """Анимация выбора элемента"""
+        old_vertex = self.selected_vertex
+        old_edge = self.selected_edge
+        
+        # Анимация снятия старого выделения
+        if old_vertex:
+            self.animate_deselect_vertex(old_vertex)
+        elif old_edge is not None:
+            self.animate_deselect_edge(old_edge)
+        
+        # Небольшая пауза перед новым выделением
+        def select_new():
+            self.selected_vertex = vertex
+            self.selected_edge = edge
+            
+            # Анимация нового выделения
+            if vertex:
+                self.animate_select_vertex(vertex)
+            elif edge is not None:
+                self.animate_select_edge(edge)
+            
+            self.redraw_graph()
+            
+            if vertex and self.on_vertex_selected_callback:
+                self.on_vertex_selected_callback(vertex)
+            elif edge is not None and self.on_edge_selected_callback:
+                edge_data = self.edges[edge]
+                self.on_edge_selected_callback((edge_data['source'], edge_data['target']))
+        
+        self.after(100, select_new)
+
+    def animate_select_vertex(self, vertex):
+        """Анимация выбора вершины"""
+        if vertex not in self.vertex_positions:
+            return
+        
+        pos = self.vertex_positions[vertex]
+        x = (pos[0] + self.offset_x) * self.scale
+        y = (pos[1] + self.offset_y) * self.scale
+        
+        # Эффект постепенного появления свечения
+        steps = 6
+        current_step = 0
+        
+        def glow_step():
+            nonlocal current_step
+            if current_step >= steps:
+                # Окончательное свечение
+                self.create_oval(x-22, y-22, x+22, y+22,
+                               outline='#FFD700',
+                               width=2,
+                               tags=f"select_glow_{vertex}")
+                self.create_oval(x-25, y-25, x+25, y+25,
+                               outline='#FFFACD',
+                               width=1,
+                               tags=f"select_glow_{vertex}")
+                return
+            
+            progress = current_step / steps
+            
+            # Плавное появление свечения
+            radius = 15 + 7 * progress
+
+            # Рисуем плавно появляющееся свечение
+            self.delete(f"select_glow_{vertex}")
+            self.create_oval(x - radius, y - radius,
+                           x + radius, y + radius,
+                           outline='#FFD700',
+                           width=2,
+                           tags=f"select_glow_{vertex}")
+
+            current_step += 1
+            anim_id = self.after(30, glow_step)
+            self.active_animations.append(anim_id)
+
+        glow_step()
+
+    def animate_select_edge(self, edge_index):
+        """Анимация выбора ребра"""
+        if edge_index >= len(self.edges):
+            return
+
+        edge = self.edges[edge_index]
+        source = edge['source']
+        target = edge['target']
+
+        if source not in self.vertex_positions or target not in self.vertex_positions:
+            return
+
+        start_pos = self.vertex_positions[source]
+        end_pos = self.vertex_positions[target]
+
+        start_x = (start_pos[0] + self.offset_x) * self.scale
+        start_y = (start_pos[1] + self.offset_y) * self.scale
+        end_x = (end_pos[0] + self.offset_x) * self.scale
+        end_y = (end_pos[1] + self.offset_y) * self.scale
+
+        # Эффект постепенного изменения ширины ребра
+        steps = 5
+        current_step = 0
+
+        def thicken_step():
+            nonlocal current_step
+            if current_step >= steps:
+                # Окончательная ширина
+                self.delete(f"select_edge_{edge_index}")
+                if source == target:
+                    loop_width = 18 * self.scale
+                    loop_height = 25 * self.scale
+                    loop_rect = (
+                        start_x - loop_width / 2,
+                        start_y - loop_height,
+                        start_x + loop_width / 2,
+                        start_y
+                    )
+                    self.create_oval(loop_rect, outline=COLORS['edge_selected'], 
+                                   width=3,
+                                   tags=f"select_edge_{edge_index}")
+                else:
+                    # Вычисляем точки на границах вершин
+                    radius = 15
+                    dx = end_x - start_x
+                    dy = end_y - start_y
+                    distance = math.sqrt(dx*dx + dy*dy)
+
+                    if distance > 0:
+                        dx_norm = dx / distance
+                        dy_norm = dy / distance
+
+                        adjusted_start_x = start_x + dx_norm * radius
+                        adjusted_start_y = start_y + dy_norm * radius
+                        adjusted_end_x = end_x - dx_norm * radius
+                        adjusted_end_y = end_y - dy_norm * radius
+                        
+                        self.create_line(adjusted_start_x, adjusted_start_y,
+                                       adjusted_end_x, adjusted_end_y,
+                                       fill=COLORS['edge_selected'], 
+                                       width=3,
+                                       tags=f"select_edge_{edge_index}")
+                return
+
+            progress = current_step / steps
+
+            # Плавное увеличение ширины
+            width = 2 + progress
+
+            # Рисуем ребро с плавно увеличивающейся шириной
+            self.delete(f"select_edge_{edge_index}")
+            if source == target:
+                loop_width = 18 * self.scale
+                loop_height = 25 * self.scale
+                loop_rect = (
+                    start_x - loop_width / 2,
+                    start_y - loop_height,
+                    start_x + loop_width / 2,
+                    start_y
+                )
+                self.create_oval(loop_rect, outline=COLORS['edge_selected'], 
+                               width=int(width)+1,
+                               tags=f"select_edge_{edge_index}")
+            else:
+                # Вычисляем точки на границах вершин
+                radius = 15
+                dx = end_x - start_x
+                dy = end_y - start_y
+                distance = math.sqrt(dx*dx + dy*dy)
+
+                if distance > 0:
+                    dx_norm = dx / distance
+                    dy_norm = dy / distance
+
+                    adjusted_start_x = start_x + dx_norm * radius
+                    adjusted_start_y = start_y + dy_norm * radius
+                    adjusted_end_x = end_x - dx_norm * radius
+                    adjusted_end_y = end_y - dy_norm * radius
+
+                    self.create_line(adjusted_start_x, adjusted_start_y,
+                                   adjusted_end_x, adjusted_end_y,
+                                   fill=COLORS['edge_selected'], 
+                                   width=int(width)+1,
+                                   tags=f"select_edge_{edge_index}")
+
+            current_step += 1
+            anim_id = self.after(40, thicken_step)
+            self.active_animations.append(anim_id)
+
+        thicken_step()
+
+    def animate_deselect_vertex(self, vertex):
+        """Анимация снятия выделения с вершины"""
+        if vertex not in self.vertex_positions:
+            return
+
+        # Простая анимация исчезновения свечения
+        steps = 4
+        current_step = 0
+
+        def fade_step():
+            nonlocal current_step
+            if current_step >= steps:
+                self.delete(f"select_glow_{vertex}")
+                return
+
+            progress = current_step / steps
+
+            current_step += 1
+            anim_id = self.after(25, fade_step)
+            self.active_animations.append(anim_id)
+
+        fade_step()
+
+    def animate_deselect_edge(self, edge_index):
+        """Анимация снятия выделения с ребра"""
+        steps = 4
+        current_step = 0
+
+        def fade_step():
+            nonlocal current_step
+            if current_step >= steps:
+                self.delete(f"select_edge_{edge_index}")
+                return
+
+            current_step += 1
+            anim_id = self.after(25, fade_step)
+            self.active_animations.append(anim_id)
+
+        fade_step()
+
     def point_to_line_distance(self, px, py, x1, y1, x2, y2):
-        """Вычисляет расстояние от точки до отрезка"""
-        # Вектор отрезка
+        """Расстояние от точки до отрезка"""
         dx = x2 - x1
         dy = y2 - y1
 
-        # Если отрезок вырожден в точку
         if dx == 0 and dy == 0:
             return math.sqrt((px - x1) ** 2 + (py - y1) ** 2)
 
-        # Параметр t проекции точки на прямую
         t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)
-
-        # Ограничиваем t отрезком [0, 1]
         t = max(0, min(1, t))
 
-        # Ближайшая точка на отрезке
         closest_x = x1 + t * dx
         closest_y = y1 + t * dy
 
         return math.sqrt((px - closest_x) ** 2 + (py - closest_y) ** 2)
 
     def on_mouse_wheel(self, event):
-        """Обработчик колесика мыши для масштабирования"""
+        """Масштабирование с плавной анимацией"""
         scale_factor = 1.1
+        old_scale = self.scale
 
         if event.num == 5 or (hasattr(event, 'delta') and event.delta < 0):
-            # Колесо вниз - уменьшаем масштаб
             self.scale /= scale_factor
             if self.scale < 0.1:
                 self.scale = 0.1
         else:
-            # Колесо вверх - увеличиваем масштаб
             self.scale *= scale_factor
             if self.scale > 10.0:
                 self.scale = 10.0
 
-        self.redraw_graph()
+        # Плавная анимация масштабирования
+        steps = 8
+        current_step = 0
+
+        def scale_step():
+            nonlocal current_step
+            if current_step >= steps:
+                self.redraw_graph()
+                return
+
+            progress = current_step / steps
+            ease_progress = progress * progress * (3 - 2 * progress)
+
+            current_scale = old_scale + (self.scale - old_scale) * ease_progress
+
+            # Сохраняем промежуточный масштаб
+            temp_scale = self.scale
+            self.scale = current_scale
+            self.redraw_graph()
+            self.scale = temp_scale
+
+            current_step += 1
+            anim_id = self.after(25, scale_step)
+            self.active_animations.append(anim_id)
+
+        scale_step()
 
     def select_vertex(self, vertex):
-        """Выбирает вершину"""
+        """Выбор вершины с анимацией"""
         self.deselect_all()
         self.selected_vertex = vertex
+        self.animate_select_vertex(vertex)
         self.redraw_graph()
 
         if self.on_vertex_selected_callback:
             self.on_vertex_selected_callback(vertex)
 
     def select_edge(self, edge_index):
-        """Выбирает ребро"""
+        """Выбор ребра с анимацией"""
         self.deselect_all()
         self.selected_edge = edge_index
+        self.animate_select_edge(edge_index)
         self.redraw_graph()
 
         if self.on_edge_selected_callback and edge_index < len(self.edges):
@@ -572,30 +977,76 @@ class GraphCanvas(tk.Canvas):
             self.on_edge_selected_callback((edge['source'], edge['target']))
 
     def deselect_all(self):
-        """Снимает все выделения"""
+        """Снятие выделения с анимацией"""
+        if self.selected_vertex:
+            self.animate_deselect_vertex(self.selected_vertex)
+        elif self.selected_edge is not None:
+            self.animate_deselect_edge(self.selected_edge)
+
         self.selected_vertex = None
         self.selected_edge = None
-        self.redraw_graph()
 
-        if self.on_deselect_callback:
-            self.on_deselect_callback()
+        def delayed_redraw():
+            self.redraw_graph()
+            if self.on_deselect_callback:
+                self.on_deselect_callback()
+
+        self.after(80, delayed_redraw)
 
     def center_graph(self):
-        """Центрирует граф на canvas"""
+        """Центрирование графа с плавной анимацией"""
         if not self.vertex_positions:
             return
 
-        # Сбрасываем трансформации
-        self.scale = 1.0
-        self.offset_x = 0
-        self.offset_y = 0
+        target_offset_x = 0
+        target_offset_y = 0
+        target_scale = 1.0
 
-        # Перерасполагаем вершины
-        self.arrange_vertices()
-        self.redraw_graph()
+        old_offset_x = self.offset_x
+        old_offset_y = self.offset_y
+        old_scale = self.scale
+
+        steps = 10
+        current_step = 0
+
+        def center_step():
+            nonlocal current_step
+            if current_step >= steps:
+                self.offset_x = target_offset_x
+                self.offset_y = target_offset_y
+                self.scale = target_scale
+                self.redraw_graph()
+                return
+
+            progress = current_step / steps
+            ease_progress = progress * progress  # Квадратичный easing
+
+            self.offset_x = old_offset_x + (target_offset_x - old_offset_x) * ease_progress
+            self.offset_y = old_offset_y + (target_offset_y - old_offset_y) * ease_progress
+            self.scale = old_scale + (target_scale - old_scale) * ease_progress
+
+            self.redraw_graph()
+
+            current_step += 1
+            anim_id = self.after(40, center_step)
+            self.active_animations.append(anim_id)
+
+        center_step()
+
+    def stop_all_animations(self):
+        """Останавливает все активные анимации"""
+        for anim_id in self.active_animations:
+            self.after_cancel(anim_id)
+        self.active_animations.clear()
+
+        for glow_id, anim_id in list(self.glow_effects.items()):
+            if anim_id:
+                self.after_cancel(anim_id)
+            self.delete(glow_id)
+        self.glow_effects.clear()
 
     def get_vertex_degree(self, vertex):
-        """Вычисляет степень вершины"""
+        """Степень вершины"""
         degree = 0
         for edge in self.edges:
             if edge['source'] == vertex or edge['target'] == vertex:
@@ -603,7 +1054,7 @@ class GraphCanvas(tk.Canvas):
         return degree
 
     def get_vertex_neighbors(self, vertex):
-        """Возвращает список соседей вершины"""
+        """Соседи вершины"""
         neighbors = []
         for edge in self.edges:
             if edge['source'] == vertex:
@@ -612,14 +1063,14 @@ class GraphCanvas(tk.Canvas):
                 neighbors.append(edge['source'])
         return neighbors
 
-    def get_vertex_edges(self, vertex):
-        """Возвращает список ребер, связанных с вершиной"""
-        vertex_edges = []
-        for i, edge in enumerate(self.edges):
-            if edge['source'] == vertex or edge['target'] == vertex:
-                vertex_edges.append((i, edge))
-        return vertex_edges
+    def is_directed(self):
+        """Проверяет, является ли граф направленным"""
+        if hasattr(self.graph, 'properties') and hasattr(self.graph.properties, 'directed'):
+            return self.graph.properties.directed
+        return False
 
+
+# Остальной код GraphBrowser и GraphVisualizerApp остается БЕЗ ИЗМЕНЕНИЙ
 
 class GraphBrowser(ttk.Frame):
     """Браузер графов в ZIP-архиве с прокруткой"""
@@ -640,7 +1091,7 @@ class GraphBrowser(ttk.Frame):
         main_container.pack(fill='both', expand=True)
 
         # Создаем Canvas для прокрутки
-        canvas = tk.Canvas(main_container)
+        canvas = tk.Canvas(main_container, bg=COLORS['bg_main'])
         scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
 
         # Контейнер для контента внутри Canvas
@@ -662,8 +1113,6 @@ class GraphBrowser(ttk.Frame):
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-
-
         # Список файлов
         self.listbox_frame = ttk.Frame(self.scrollable_frame)
         self.listbox_frame.pack(fill='both', expand=True, padx=10, pady=5)
@@ -672,7 +1121,9 @@ class GraphBrowser(ttk.Frame):
         self.listbox = tk.Listbox(self.listbox_frame,
                                   font=('Arial', 10),
                                   selectmode=tk.SINGLE,
-                                  height=6)  # Фиксированная высота
+                                  height=6,
+                                  bg='white',
+                                  relief='flat')
         self.listbox.pack(side='left', fill='both', expand=True)
 
         listbox_scrollbar = ttk.Scrollbar(self.listbox_frame,
@@ -682,8 +1133,12 @@ class GraphBrowser(ttk.Frame):
         self.listbox.config(yscrollcommand=listbox_scrollbar.set)
 
         # Кнопка загрузки
-        ttk.Button(self.scrollable_frame, text="Загрузить выбранный граф",
-                   command=self.load_selected).pack(pady=10, padx=10)
+        button_frame = tk.Frame(self.scrollable_frame, bg=COLORS['bg_main'])
+        button_frame.pack(pady=10, padx=10, fill='x')
+
+        load_btn = StyledButton(button_frame, text="Загрузить выбранный граф",
+                                command=self.load_selected)
+        load_btn.pack()
 
         # Настраиваем растягивание окна при изменении размера
         canvas.bind("<Configure>", lambda e: canvas.itemconfig(canvas_window, width=e.width))
@@ -729,7 +1184,7 @@ class ScrollableFrame(ttk.Frame):
         super().__init__(master, **kwargs)
 
         # Создаем Canvas для прокрутки
-        self.canvas = tk.Canvas(self, highlightthickness=0)
+        self.canvas = tk.Canvas(self, bg=COLORS['bg_main'], highlightthickness=0)
         self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
 
         # Контейнер для контента внутри Canvas
@@ -768,6 +1223,7 @@ class GraphVisualizerApp:
         self.root = tk.Tk()
         self.root.title("Graph Visualizer")
         self.root.geometry("1600x900")
+        self.root.configure(bg=COLORS['bg_main'])
 
         self.graph = None
         self.explorer = None
@@ -777,31 +1233,34 @@ class GraphVisualizerApp:
 
     def create_widgets(self):
         """Создает все виджеты интерфейса"""
-        main_frame = ttk.Frame(self.root)
-        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        # Главный контейнер с цветом фона
+        main_container = tk.Frame(self.root, bg=COLORS['bg_main'])
+        main_container.pack(fill='both', expand=True, padx=10, pady=10)
 
         # Левая панель - Canvas для графа
-        left_frame = ttk.Frame(main_frame, width=1200)
+        left_frame = tk.Frame(main_container, bg=COLORS['bg_main'], width=1200)
         left_frame.pack(side='left', fill='both', expand=True)
         left_frame.pack_propagate(False)
 
+        # Рамка для Canvas
+        canvas_frame = tk.Frame(left_frame, bg=COLORS['border'], bd=2, relief='solid')
+        canvas_frame.pack(fill='both', expand=True, padx=5, pady=5)
+
         # Canvas для отрисовки графа
         self.canvas = GraphCanvas(
-            left_frame,
+            canvas_frame,
             on_vertex_selected=self.on_vertex_selected,
             on_edge_selected=self.on_edge_selected,
             on_deselect=self.on_deselect,
-            width=1200,
-            height=700
+            width=1190,
+            height=690
         )
-        self.canvas.pack(fill='both', expand=True)
+        self.canvas.pack(fill='both', expand=True, padx=1, pady=1)
 
         # Правая панель - управление с прокруткой
-        right_frame = ScrollableFrame(main_frame, width=350)
+        right_frame = ScrollableFrame(main_container, width=350)
         right_frame.pack(side='right', fill='y')
         right_frame.pack_propagate(False)
-
-
 
         self.create_control_buttons(right_frame.scrollable_frame)
         self.create_graph_info_panel(right_frame.scrollable_frame)
@@ -810,40 +1269,70 @@ class GraphVisualizerApp:
 
     def create_control_buttons(self, parent):
         """Создает кнопки управления"""
-        button_frame = ttk.Frame(parent)
+        button_frame = tk.Frame(parent, bg=COLORS['bg_main'])
         button_frame.pack(fill='x', padx=10, pady=10)
 
-        ttk.Button(button_frame, text="Открыть файл графа",
-                   command=self.open_graph_file,
-                   width=25).pack(pady=5)
+        # Заголовок панели управления
+        title_label = tk.Label(button_frame, text="Управление", 
+                              font=('Arial', 12, 'bold'),
+                              bg=COLORS['bg_main'],
+                              fg=COLORS['text'])
+        title_label.pack(pady=(0, 10))
 
-        ttk.Button(button_frame, text="Открыть ZIP архив",
-                   command=self.open_zip_archive,
-                   width=25).pack(pady=5)
+        buttons = [
+            ("Открыть файл графа", self.open_graph_file),
+            ("Открыть ZIP архив", self.open_zip_archive),
+            ("Центрировать граф", self.center_graph),
+            ("Выход", self.root.quit)
+        ]
 
-        ttk.Button(button_frame, text="Центрировать граф",
-                   command=self.center_graph,
-                   width=25).pack(pady=5)
-
-        ttk.Button(button_frame, text="Выход",
-                   command=self.root.quit,
-                   width=25).pack(pady=20)
+        for text, command in buttons:
+            btn = StyledButton(button_frame, text=text, command=command, 
+                              width=220, height=45)
+            btn.pack(pady=8)
 
     def create_graph_info_panel(self, parent):
         """Создает панель информации о графе"""
-        info_frame = ttk.LabelFrame(parent, text="Информация о графе", padding=10)
+        # Рамка с заголовком
+        info_frame = tk.Frame(parent, bg=COLORS['bg_main'])
         info_frame.pack(fill='x', padx=10, pady=10)
 
+        # Заголовок
+        title_frame = tk.Frame(info_frame, bg=COLORS['border'], height=30)
+        title_frame.pack(fill='x')
+        title_frame.pack_propagate(False)
+
+        title_label = tk.Label(title_frame, text="Информация о графе", 
+                              font=('Arial', 11, 'bold'),
+                              bg=COLORS['border'],
+                              fg=COLORS['text'])
+        title_label.pack(pady=5)
+
+        # Текстовое поле
         self.graph_info_text = scrolledtext.ScrolledText(info_frame,
-                                                         height=10,  # Уменьшил высоту
+                                                         height=10,
                                                          font=('Arial', 9),
-                                                         state='disabled')
+                                                         state='disabled',
+                                                         bg='white',
+                                                         relief='flat',
+                                                         bd=1)
         self.graph_info_text.pack(fill='both', expand=True)
 
     def create_graph_browser(self, parent):
         """Создает браузер графов для ZIP-архивов"""
-        self.browser_frame = ttk.LabelFrame(parent, text="Архив графов", padding=10)
+        self.browser_frame = tk.Frame(parent, bg=COLORS['bg_main'])
         self.browser_frame.pack_forget()  # Скрываем по умолчанию
+
+        # Заголовок
+        title_frame = tk.Frame(self.browser_frame, bg=COLORS['border'], height=30)
+        title_frame.pack(fill='x')
+        title_frame.pack_propagate(False)
+
+        title_label = tk.Label(title_frame, text="Архив графов", 
+                              font=('Arial', 11, 'bold'),
+                              bg=COLORS['border'],
+                              fg=COLORS['text'])
+        title_label.pack(pady=5)
 
         self.browser = GraphBrowser(self.browser_frame)
         self.browser.pack(fill='both', expand=True, padx=5, pady=5)
@@ -852,13 +1341,28 @@ class GraphVisualizerApp:
 
     def create_selection_info_panel(self, parent):
         """Создает панель информации о выбранном элементе"""
-        selection_frame = ttk.LabelFrame(parent, text="Выбранный элемент", padding=10)
+        # Рамка с заголовком
+        selection_frame = tk.Frame(parent, bg=COLORS['bg_main'])
         selection_frame.pack(fill='x', padx=10, pady=10)
 
+        # Заголовок
+        title_frame = tk.Frame(selection_frame, bg=COLORS['border'], height=30)
+        title_frame.pack(fill='x')
+        title_frame.pack_propagate(False)
+
+        title_label = tk.Label(title_frame, text="Выбранный элемент", 
+                              font=('Arial', 11, 'bold'),
+                              bg=COLORS['border'],
+                              fg=COLORS['text'])
+        title_label.pack(pady=5)
+
         self.selection_info_text = scrolledtext.ScrolledText(selection_frame,
-                                                             height=6,  # Уменьшил высоту
+                                                             height=6,
                                                              font=('Arial', 9),
-                                                             state='disabled')
+                                                             state='disabled',
+                                                             bg='white',
+                                                             relief='flat',
+                                                             bd=1)
         self.selection_info_text.pack(fill='both', expand=True)
 
         self.on_deselect()
