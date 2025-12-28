@@ -915,18 +915,36 @@ class GraphCanvas(tk.Canvas):
         return math.sqrt((px - closest_x) ** 2 + (py - closest_y) ** 2)
 
     def on_mouse_wheel(self, event):
-        """Масштабирование с плавной анимацией"""
-        scale_factor = 1.1
+        """Масштабирование с плавной анимацией относительно центра окна"""
+        # Получаем текущий центр окна
+        canvas_center_x = self.winfo_width() / 2
+        canvas_center_y = self.winfo_height() / 2
+
+        # Преобразуем центр канваса в координаты графа
+        graph_center_x = (canvas_center_x / self.scale) - self.offset_x
+        graph_center_y = (canvas_center_y / self.scale) - self.offset_y
+
         old_scale = self.scale
+        scale_factor = 1.1
 
         if event.num == 5 or (hasattr(event, 'delta') and event.delta < 0):
+            # Уменьшение
             self.scale /= scale_factor
             if self.scale < 0.1:
                 self.scale = 0.1
         else:
+            # Увеличение
             self.scale *= scale_factor
             if self.scale > 10.0:
                 self.scale = 10.0
+
+        # Вычисляем новые смещения, чтобы сохранить центр графа в центре окна
+        new_canvas_center_x = canvas_center_x
+        new_canvas_center_y = canvas_center_y
+
+        # Находим новые смещения для сохранения центра
+        self.offset_x = (new_canvas_center_x / self.scale) - graph_center_x
+        self.offset_y = (new_canvas_center_y / self.scale) - graph_center_y
 
         # Плавная анимация масштабирования
         steps = 8
@@ -939,15 +957,31 @@ class GraphCanvas(tk.Canvas):
                 return
 
             progress = current_step / steps
-            ease_progress = progress * progress * (3 - 2 * progress)
+            ease_progress = progress * progress * (3 - 2 * progress)  # Кубический easing
 
             current_scale = old_scale + (self.scale - old_scale) * ease_progress
 
-            # Сохраняем промежуточный масштаб
+            # Плавно изменяем смещения для анимации
+            current_offset_x = self.offset_x
+            current_offset_y = self.offset_y
+
+            # Для плавности можно также анимировать смещения, но это сложнее
+            # Пока просто масштабируем
             temp_scale = self.scale
+            temp_offset_x = self.offset_x
+            temp_offset_y = self.offset_y
+
             self.scale = current_scale
+            # Пересчитываем смещения для текущего масштаба
+            self.offset_x = (canvas_center_x / current_scale) - graph_center_x
+            self.offset_y = (canvas_center_y / current_scale) - graph_center_y
+
             self.redraw_graph()
+
+            # Возвращаем исходные значения
             self.scale = temp_scale
+            self.offset_x = temp_offset_x
+            self.offset_y = temp_offset_y
 
             current_step += 1
             anim_id = self.after(25, scale_step)
