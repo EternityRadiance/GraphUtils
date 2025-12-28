@@ -204,7 +204,6 @@ class CombinedGraphApp:
     def load_search_data(self):
         """Загрузка данных для поиска"""
 
-        # Можно запустить в фоновом режиме
         def load_task():
             console = get_console()
             if console:
@@ -237,8 +236,6 @@ class CombinedGraphApp:
         # Переключаемся на вкладку визуализации
         self.notebook.select(1)
 
-        # TODO: Реализовать загрузку графов в визуализатор
-        # Пока просто сообщение
         self.status_var.set(f"Выбрано {len(selected_graphs)} графов для визуализации")
 
         if console:
@@ -274,15 +271,7 @@ class CombinedGraphApp:
 
     def show_about(self):
         """Показать информацию о программе"""
-        about_text = """Graph System v2.0
-
-Объединенная система для работы с графами:
-• Поиск и фильтрация графов по свойствам
-• Визуализация графов с анимациями
-• Экспорт и импорт данных
-
-Разработчик: Graph Systems Team
-Версия: 2.0 (объединенная)"""
+        about_text = "Визуализатор + загрузчик графов"
 
         tk.messagebox.showinfo("О программе", about_text)
 

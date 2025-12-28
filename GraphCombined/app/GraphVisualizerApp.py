@@ -372,16 +372,43 @@ class GraphCanvas(tk.Canvas):
 
     def animate_line_drawing(self, start_x, start_y, end_x, end_y, edge_index):
         """Анимация рисования линии ребра"""
-        steps = 20
+        steps = 10
         current_step = 0
+
+        # Получаем вес ребра
+        edge = self.edges[edge_index]
+        weight = edge.get('weight', 1)
 
         def draw_line_step():
             nonlocal current_step
             if current_step >= steps:
                 # После завершения анимации рисуем постоянное ребро
                 self.create_line(start_x, start_y, end_x, end_y,
-                               fill=COLORS['edge_normal'], width=2,
-                               tags=f"edge_{edge_index}")
+                            fill=COLORS['edge_normal'], width=2,
+                            tags=f"edge_{edge_index}")
+
+                # Если граф взвешенный, отображаем вес
+                if hasattr(self.graph, 'properties') and getattr(self.graph.properties, 'weighted', False):
+                    # Позиция для текста веса - середина ребра
+                    mid_x = (start_x + end_x) / 2
+                    mid_y = (start_y + end_y) / 2
+
+                    # Вычисляем смещение для текста
+                    dx = end_x - start_x
+                    dy = end_y - start_y
+                    distance = math.sqrt(dx*dx + dy*dy)
+
+                    if distance > 0:
+                        dx_norm = dx / distance
+                        dy_norm = dy / distance
+
+                        # Смещаем текст перпендикулярно ребру
+                        offset_x = -dy_norm * 12
+                        offset_y = dx_norm * 12
+
+                        self.create_text(mid_x + offset_x, mid_y + offset_y,
+                                    text=str(weight), font=('Arial', 10, 'bold'),
+                                    fill='#333333', tags=f"weight_{edge_index}")
                 return
 
             progress = current_step / steps
@@ -397,7 +424,7 @@ class GraphCanvas(tk.Canvas):
                 # Промежуточный цвет
                 r = int(0xFF * (1 - progress/0.7) + 0x93 * (progress/0.7))
                 g = int(0x6B * (1 - progress/0.7) + 0x70 * (progress/0.7))
-                b = int(0x9D * (1 - progress/0.7) + 0xDB * (progress/0.7))
+                b = int(0x9D * (1 - progress/0.7) + 0x70 * (progress/0.7))
                 color = f'#{r:02x}{g:02x}{b:02x}'
             else:
                 color = COLORS['edge_normal']
@@ -406,8 +433,8 @@ class GraphCanvas(tk.Canvas):
             line_width = 3 if progress < 0.8 else 2
 
             self.create_line(start_x, start_y, current_x, current_y,
-                           fill=color, width=line_width,
-                           tags=f"edge_temp_{edge_index}")
+                        fill=color, width=line_width,
+                        tags=f"edge_temp_{edge_index}")
 
             current_step += 1
             anim_id = self.after(30, draw_line_step)
