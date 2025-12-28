@@ -235,7 +235,7 @@ class GraphCanvas(tk.Canvas):
     def animate_vertices_to_target(self, target_positions):
         """Анимирует движение вершин к целевым позициям"""
         start_positions = self.vertex_positions.copy()
-        steps = 60
+        steps = 20
         current_step = 0
 
         def animate_step():
@@ -349,16 +349,43 @@ class GraphCanvas(tk.Canvas):
 
     def animate_line_drawing(self, start_x, start_y, end_x, end_y, edge_index):
         """Анимация рисования линии ребра"""
-        steps = 20
+        steps = 10
         current_step = 0
-
+        
+        # Получаем вес ребра
+        edge = self.edges[edge_index]
+        weight = edge.get('weight', 1)
+        
         def draw_line_step():
             nonlocal current_step
             if current_step >= steps:
                 # После завершения анимации рисуем постоянное ребро
                 self.create_line(start_x, start_y, end_x, end_y,
-                               fill=COLORS['edge_normal'], width=2,
-                               tags=f"edge_{edge_index}")
+                            fill=COLORS['edge_normal'], width=2,
+                            tags=f"edge_{edge_index}")
+                
+                # Если граф взвешенный, отображаем вес
+                if hasattr(self.graph, 'properties') and getattr(self.graph.properties, 'weighted', False):
+                    # Позиция для текста веса - середина ребра
+                    mid_x = (start_x + end_x) / 2
+                    mid_y = (start_y + end_y) / 2
+                    
+                    # Вычисляем смещение для текста
+                    dx = end_x - start_x
+                    dy = end_y - start_y
+                    distance = math.sqrt(dx*dx + dy*dy)
+                    
+                    if distance > 0:
+                        dx_norm = dx / distance
+                        dy_norm = dy / distance
+                        
+                        # Смещаем текст перпендикулярно ребру
+                        offset_x = -dy_norm * 12
+                        offset_y = dx_norm * 12
+                        
+                        self.create_text(mid_x + offset_x, mid_y + offset_y,
+                                    text=str(weight), font=('Arial', 10, 'bold'),
+                                    fill='#333333', tags=f"weight_{edge_index}")
                 return
 
             progress = current_step / steps
@@ -374,7 +401,7 @@ class GraphCanvas(tk.Canvas):
                 # Промежуточный цвет
                 r = int(0xFF * (1 - progress/0.7) + 0x93 * (progress/0.7))
                 g = int(0x6B * (1 - progress/0.7) + 0x70 * (progress/0.7))
-                b = int(0x9D * (1 - progress/0.7) + 0xDB * (progress/0.7))
+                b = int(0x9D * (1 - progress/0.7) + 0x70 * (progress/0.7))
                 color = f'#{r:02x}{g:02x}{b:02x}'
             else:
                 color = COLORS['edge_normal']
@@ -383,8 +410,8 @@ class GraphCanvas(tk.Canvas):
             line_width = 3 if progress < 0.8 else 2
 
             self.create_line(start_x, start_y, current_x, current_y,
-                           fill=color, width=line_width,
-                           tags=f"edge_temp_{edge_index}")
+                        fill=color, width=line_width,
+                        tags=f"edge_temp_{edge_index}")
 
             current_step += 1
             anim_id = self.after(30, draw_line_step)
@@ -400,8 +427,8 @@ class GraphCanvas(tk.Canvas):
         loop_height = 25 * self.scale
 
         # Для петель используем точку на границе вершины
-        loop_start_x = x
-        loop_start_y = y - 15  # Начинаем от верхней границы вершины
+       # loop_start_x = x
+        #loop_start_y = y - 15  # Начинаем от верхней границы вершины
         
         def draw_loop_step():
             nonlocal current_step
@@ -528,6 +555,13 @@ class GraphCanvas(tk.Canvas):
                         start_y
                     )
                     self.create_oval(loop_rect, outline=edge_color, width=edge_width)
+                    
+                    # Для петель: отображаем вес рядом с петлей
+                    if hasattr(self.graph, 'properties') and getattr(self.graph.properties, 'weighted', False):
+                        weight = edge.get('weight', 1)
+                        self.create_text(start_x - loop_width/2, start_y - loop_height - 20,
+                                    text=str(weight), font=('Arial', 10, 'bold'),
+                                    fill='#333333', tags=f"weight_{i}")
                 else:
                     # Вычисляем точки на границах вершин
                     radius = 15
@@ -547,8 +581,23 @@ class GraphCanvas(tk.Canvas):
                         adjusted_end_y = end_y - dy_norm * radius
                         
                         self.create_line(adjusted_start_x, adjusted_start_y, 
-                                       adjusted_end_x, adjusted_end_y,
-                                       fill=edge_color, width=edge_width)
+                                    adjusted_end_x, adjusted_end_y,
+                                    fill=edge_color, width=edge_width)
+                        
+                        # Отображаем вес ребра (если граф взвешенный)
+                        if hasattr(self.graph, 'properties') and getattr(self.graph.properties, 'weighted', False):
+                            # Позиция для текста веса - середина ребра
+                            mid_x = (adjusted_start_x + adjusted_end_x) / 2
+                            mid_y = (adjusted_start_y + adjusted_end_y) / 2
+                            
+                            # Смещаем текст немного в сторону, чтобы не перекрывал ребро
+                            offset_x = -dy_norm * 12
+                            offset_y = dx_norm * 12
+                            
+                            weight = edge.get('weight', 1)
+                            self.create_text(mid_x + offset_x, mid_y + offset_y,
+                                        text=str(weight), font=('Arial', 10, 'bold'),
+                                        fill='#333333', tags=f"weight_{i}")
 
         # Рисуем вершины поверх ребер
         for vertex, pos in self.vertex_positions.items():
@@ -561,25 +610,24 @@ class GraphCanvas(tk.Canvas):
                 
                 # Статичное свечение для выбранной вершины
                 self.create_oval(x-22, y-22, x+22, y+22,
-                               outline='#FFD700',
-                               width=2)
+                            outline='#FFD700',
+                            width=2)
                 self.create_oval(x-25, y-25, x+25, y+25,
-                               outline='#FFFACD',
-                               width=1)
+                            outline='#FFFACD',
+                            width=1)
             else:
                 vertex_color = COLORS['vertex_normal']
                 border_width = 1
 
             self.create_oval(x - 15, y - 15,
-                           x + 15, y + 15,
-                           fill=vertex_color,
-                           outline='black',
-                           width=border_width)
+                        x + 15, y + 15,
+                        fill=vertex_color,
+                        outline='black',
+                        width=border_width)
 
             self.create_text(x, y, text=str(vertex),
-                           fill='white',
-                           font=('Arial', 12, 'bold'))
-
+                        fill='white',
+                        font=('Arial', 12, 'bold'))
     def on_mouse_down(self, event):
         """Нажатие мыши"""
         self.last_mouse_pos = (event.x, event.y)
@@ -755,6 +803,7 @@ class GraphCanvas(tk.Canvas):
         edge = self.edges[edge_index]
         source = edge['source']
         target = edge['target']
+        weight = edge.get('weight', 1)
 
         if source not in self.vertex_positions or target not in self.vertex_positions:
             return
@@ -786,8 +835,14 @@ class GraphCanvas(tk.Canvas):
                         start_y
                     )
                     self.create_oval(loop_rect, outline=COLORS['edge_selected'], 
-                                   width=3,
-                                   tags=f"select_edge_{edge_index}")
+                                width=3,
+                                tags=f"select_edge_{edge_index}")
+                    
+                    # Для петель: отображаем вес выбранным цветом
+                    if hasattr(self.graph, 'properties') and getattr(self.graph.properties, 'weighted', False):
+                        self.create_text(start_x - loop_width/2, start_y - loop_height - 20,
+                                    text=str(weight), font=('Arial', 10, 'bold'),
+                                    fill=COLORS['edge_selected'], tags=f"weight_{edge_index}")
                 else:
                     # Вычисляем точки на границах вершин
                     radius = 15
@@ -805,10 +860,21 @@ class GraphCanvas(tk.Canvas):
                         adjusted_end_y = end_y - dy_norm * radius
                         
                         self.create_line(adjusted_start_x, adjusted_start_y,
-                                       adjusted_end_x, adjusted_end_y,
-                                       fill=COLORS['edge_selected'], 
-                                       width=3,
-                                       tags=f"select_edge_{edge_index}")
+                                    adjusted_end_x, adjusted_end_y,
+                                    fill=COLORS['edge_selected'], 
+                                    width=3,
+                                    tags=f"select_edge_{edge_index}")
+                        
+                        # Если граф взвешенный, отображаем вес выбранным цветом
+                        if hasattr(self.graph, 'properties') and getattr(self.graph.properties, 'weighted', False):
+                            mid_x = (adjusted_start_x + adjusted_end_x) / 2
+                            mid_y = (adjusted_start_y + adjusted_end_y) / 2
+                            offset_x = -dy_norm * 12
+                            offset_y = dx_norm * 12
+                            
+                            self.create_text(mid_x + offset_x, mid_y + offset_y,
+                                        text=str(weight), font=('Arial', 10, 'bold'),
+                                        fill=COLORS['edge_selected'], tags=f"weight_{edge_index}")
                 return
 
             progress = current_step / steps
@@ -828,8 +894,8 @@ class GraphCanvas(tk.Canvas):
                     start_y
                 )
                 self.create_oval(loop_rect, outline=COLORS['edge_selected'], 
-                               width=int(width)+1,
-                               tags=f"select_edge_{edge_index}")
+                            width=int(width)+1,
+                            tags=f"select_edge_{edge_index}")
             else:
                 # Вычисляем точки на границах вершин
                 radius = 15
@@ -847,10 +913,10 @@ class GraphCanvas(tk.Canvas):
                     adjusted_end_y = end_y - dy_norm * radius
 
                     self.create_line(adjusted_start_x, adjusted_start_y,
-                                   adjusted_end_x, adjusted_end_y,
-                                   fill=COLORS['edge_selected'], 
-                                   width=int(width)+1,
-                                   tags=f"select_edge_{edge_index}")
+                                adjusted_end_x, adjusted_end_y,
+                                fill=COLORS['edge_selected'], 
+                                width=int(width)+1,
+                                tags=f"select_edge_{edge_index}")
 
             current_step += 1
             anim_id = self.after(40, thicken_step)
@@ -962,8 +1028,8 @@ class GraphCanvas(tk.Canvas):
             current_scale = old_scale + (self.scale - old_scale) * ease_progress
 
             # Плавно изменяем смещения для анимации
-            current_offset_x = self.offset_x
-            current_offset_y = self.offset_y
+           # current_offset_x = self.offset_x
+           # current_offset_y = self.offset_y
 
             # Для плавности можно также анимировать смещения, но это сложнее
             # Пока просто масштабируем
@@ -1079,6 +1145,8 @@ class GraphCanvas(tk.Canvas):
             self.delete(glow_id)
         self.glow_effects.clear()
 
+        self.delete("weight_")
+
     def get_vertex_degree(self, vertex):
         """Степень вершины"""
         degree = 0
@@ -1102,9 +1170,6 @@ class GraphCanvas(tk.Canvas):
         if hasattr(self.graph, 'properties') and hasattr(self.graph.properties, 'directed'):
             return self.graph.properties.directed
         return False
-
-
-# Остальной код GraphBrowser и GraphVisualizerApp остается БЕЗ ИЗМЕНЕНИЙ
 
 class GraphBrowser(ttk.Frame):
     """Браузер графов в ZIP-архиве с прокруткой"""
@@ -1557,15 +1622,22 @@ class GraphVisualizerApp:
             return
 
         source, target = edge
+        
+        # Получаем вес ребра
+        weight = 1
+        for e in self.canvas.edges:
+            if (e['source'] == source and e['target'] == target) or (e['source'] == target and e['target'] == source):
+                weight = e.get('weight', 1)
+                break
 
         text = f"""РЕБРО: {source} → {target}
 
-ИНФОРМАЦИЯ:
-• Источник: {source}
-• Цель: {target}
-• Тип: {'Петля' if source == target else 'Обычное ребро'}
-• Направленное: {self.canvas.is_directed()}
-• Вес: {self.canvas.edge_weights.get((source, target), '1.0')}"""
+    ИНФОРМАЦИЯ:
+    • Источник: {source}
+    • Цель: {target}
+    • Тип: {'Петля' if source == target else 'Обычное ребро'}
+    • Направленное: {self.canvas.is_directed()}
+    • Вес: {weight}"""
 
         self.selection_info_text.config(state='normal')
         self.selection_info_text.delete(1.0, tk.END)
