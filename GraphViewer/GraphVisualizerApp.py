@@ -351,11 +351,11 @@ class GraphCanvas(tk.Canvas):
         """Анимация рисования линии ребра"""
         steps = 10
         current_step = 0
-        
+
         # Получаем вес ребра
         edge = self.edges[edge_index]
         weight = edge.get('weight', 1)
-        
+
         def draw_line_step():
             nonlocal current_step
             if current_step >= steps:
@@ -363,26 +363,26 @@ class GraphCanvas(tk.Canvas):
                 self.create_line(start_x, start_y, end_x, end_y,
                             fill=COLORS['edge_normal'], width=2,
                             tags=f"edge_{edge_index}")
-                
+
                 # Если граф взвешенный, отображаем вес
                 if hasattr(self.graph, 'properties') and getattr(self.graph.properties, 'weighted', False):
                     # Позиция для текста веса - середина ребра
                     mid_x = (start_x + end_x) / 2
                     mid_y = (start_y + end_y) / 2
-                    
+
                     # Вычисляем смещение для текста
                     dx = end_x - start_x
                     dy = end_y - start_y
                     distance = math.sqrt(dx*dx + dy*dy)
-                    
+
                     if distance > 0:
                         dx_norm = dx / distance
                         dy_norm = dy / distance
-                        
+
                         # Смещаем текст перпендикулярно ребру
                         offset_x = -dy_norm * 12
                         offset_y = dx_norm * 12
-                        
+
                         self.create_text(mid_x + offset_x, mid_y + offset_y,
                                     text=str(weight), font=('Arial', 10, 'bold'),
                                     fill='#333333', tags=f"weight_{edge_index}")
