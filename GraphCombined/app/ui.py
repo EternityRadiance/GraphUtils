@@ -89,7 +89,7 @@ class UISizeScheme:
     WINDOW = "1400x850"
     RESULTS_TREE_HEIGHT = 22
     AUTHOR_ENTRY_WIDTH = 30
-    BUTTON_WIDTH_NORMAL = 20
+    BUTTON_WIDTH_NORMAL = 22
     BUTTON_WIDTH_LARGE = 20
     
     # Минимальные размеры окон
