@@ -7,10 +7,10 @@ from collections import deque, defaultdict
 from .explorer import GraphExplorer
 from .graph_models import Graph
 
-
 # Используем цветовую палитру из конфига
 try:
     from app.config import CONFIG
+
     COLORS = {
         'bg_main': CONFIG.UI.colors.BACKGROUND,
         'bg_panel': '#FFFFFF',
@@ -55,8 +55,9 @@ except ImportError:
 
 class StyledButton(tk.Canvas):
     """Стилизованная кнопка с простыми анимациями"""
+
     def __init__(self, master, text, command, width=200, height=40, **kwargs):
-        super().__init__(master, width=width, height=height, 
+        super().__init__(master, width=width, height=height,
                          highlightthickness=0, bd=0, bg=COLORS['bg_main'])
         self.command = command
         self.button_text = text
@@ -87,17 +88,17 @@ class StyledButton(tk.Canvas):
         height = self.button_height
 
         # Простой прямоугольник с закругленными углами
-        self.create_rectangle(0, 0, width, height, 
-                             fill=self.current_color, 
-                             outline=COLORS['border'], 
-                             width=1)
+        self.create_rectangle(0, 0, width, height,
+                              fill=self.current_color,
+                              outline=COLORS['border'],
+                              width=1)
 
         # Текст
         font_size = 11
-        self.create_text(width//2, height//2, 
-                        text=self.button_text, 
-                        font=('Arial', font_size, 'bold'),
-                        fill=COLORS['button_fg'])
+        self.create_text(width // 2, height // 2,
+                         text=self.button_text,
+                         font=('Arial', font_size, 'bold'),
+                         fill=COLORS['button_fg'])
 
     def animate_color(self, target_color, steps=2):  # Уменьшено в 5 раз
         """Простая анимация цвета"""
@@ -108,6 +109,7 @@ class StyledButton(tk.Canvas):
         target_r, target_g, target_b = self.hex_to_rgb(target_color)
 
         step = 0
+
         def animate():
             nonlocal step
             if step >= steps:
@@ -131,7 +133,7 @@ class StyledButton(tk.Canvas):
     def hex_to_rgb(self, hex_color):
         """Конвертирует HEX цвет в RGB"""
         hex_color = hex_color.lstrip('#')
-        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
 
     def on_press(self, event):
         """Нажатие кнопки"""
@@ -185,11 +187,11 @@ class GraphCanvas(tk.Canvas):
 
         # Эффекты
         self.glow_effects = {}
-        
+
         # Блокировка для анимаций и больших графов
         self.is_animating = False
         self.large_graph_threshold = 30  # Порог для больших графов
-        self.large_edge_threshold = 50   # Порог для большого количества ребер
+        self.large_edge_threshold = 50  # Порог для большого количества ребер
 
         # Callback'и
         self.on_vertex_selected_callback = on_vertex_selected
@@ -234,9 +236,9 @@ class GraphCanvas(tk.Canvas):
         self.selected_edge = None
 
         # Определяем, большой ли граф
-        is_large_graph = (len(self.vertices) > self.large_graph_threshold or 
-                         len(self.edges) > self.large_edge_threshold)
-        
+        is_large_graph = (len(self.vertices) > self.large_graph_threshold or
+                          len(self.edges) > self.large_edge_threshold)
+
         if is_large_graph:
             # Для больших графов - быстрая или минимальная анимация
             self.load_graph_fast()
@@ -372,6 +374,10 @@ class GraphCanvas(tk.Canvas):
         end_x = (end_pos[0] + self.offset_x) * self.scale
         end_y = (end_pos[1] + self.offset_y) * self.scale
 
+        # Получаем свойства графа
+        is_weighted = hasattr(self.graph, 'properties') and getattr(self.graph.properties, 'weighted', False)
+        is_directed = self.is_directed()
+
         # Вычисляем точки на границах вершин (не в центре)
         radius = 15  # Радиус вершины
 
@@ -382,7 +388,7 @@ class GraphCanvas(tk.Canvas):
             # Для обычных ребер
             dx = end_x - start_x
             dy = end_y - start_y
-            distance = math.sqrt(dx*dx + dy*dy)
+            distance = math.sqrt(dx * dx + dy * dy)
 
             if distance > 0:
                 # Нормализуем вектор
@@ -395,48 +401,32 @@ class GraphCanvas(tk.Canvas):
                 adjusted_end_x = end_x - dx_norm * radius
                 adjusted_end_y = end_y - dy_norm * radius
 
-                self.animate_line_drawing(adjusted_start_x, adjusted_start_y, 
-                                         adjusted_end_x, adjusted_end_y, edge_index)
+                self.animate_line_drawing(adjusted_start_x, adjusted_start_y,
+                                          adjusted_end_x, adjusted_end_y, edge_index, is_weighted, is_directed, dx_norm,
+                                          dy_norm)
 
-    def animate_line_drawing(self, start_x, start_y, end_x, end_y, edge_index):
+    def animate_line_drawing(self, start_x, start_y, end_x, end_y, edge_index, is_weighted, is_directed, dx_norm,
+                             dy_norm):
         """Анимация рисования линии ребра"""
         steps = 8  # Уменьшено в 1.25 раза
         current_step = 0
-
-        # Получаем вес ребра
-        edge = self.edges[edge_index]
-        weight = edge.get('weight', 1)
 
         def draw_line_step():
             nonlocal current_step
             if current_step >= steps:
                 # После завершения анимации рисуем постоянное ребро
                 self.create_line(start_x, start_y, end_x, end_y,
-                            fill=COLORS['edge_normal'], width=2,
-                            tags=f"edge_{edge_index}")
+                                 fill=COLORS['edge_normal'], width=2,
+                                 tags=f"edge_{edge_index}")
 
-                # Если граф взвешенный, отображаем вес
-                if hasattr(self.graph, 'properties') and getattr(self.graph.properties, 'weighted', False):
-                    # Позиция для текста веса - середина ребра
-                    mid_x = (start_x + end_x) / 2
-                    mid_y = (start_y + end_y) / 2
+                # Рисуем стрелку для направленных графов
+                if is_directed:
+                    self.draw_arrow(end_x, end_y, dx_norm, dy_norm, COLORS['edge_normal'], edge_index)
 
-                    # Вычисляем смещение для текста
-                    dx = end_x - start_x
-                    dy = end_y - start_y
-                    distance = math.sqrt(dx*dx + dy*dy)
+                # Удаляем временный тег
+                self.delete(f"edge_temp_{edge_index}")
 
-                    if distance > 0:
-                        dx_norm = dx / distance
-                        dy_norm = dy / distance
-
-                        # Смещаем текст перпендикулярно ребру
-                        offset_x = -dy_norm * 12
-                        offset_y = dx_norm * 12
-
-                        self.create_text(mid_x + offset_x, mid_y + offset_y,
-                                    text=str(weight), font=('Arial', 10, 'bold'),
-                                    fill='#333333', tags=f"weight_{edge_index}")
+                # Вес будет отрисован в redraw_graph, чтобы избежать дублирования
                 return
 
             progress = current_step / steps
@@ -450,9 +440,9 @@ class GraphCanvas(tk.Canvas):
                 color = COLORS['animation_pulse']
             elif progress < 0.7:
                 # Промежуточный цвет
-                r = int(0xFF * (1 - progress/0.7) + 0x93 * (progress/0.7))
-                g = int(0x6B * (1 - progress/0.7) + 0x70 * (progress/0.7))
-                b = int(0x9D * (1 - progress/0.7) + 0x70 * (progress/0.7))
+                r = int(0xFF * (1 - progress / 0.7) + 0x93 * (progress / 0.7))
+                g = int(0x6B * (1 - progress / 0.7) + 0x70 * (progress / 0.7))
+                b = int(0x9D * (1 - progress / 0.7) + 0x70 * (progress / 0.7))
                 color = f'#{r:02x}{g:02x}{b:02x}'
             else:
                 color = COLORS['edge_normal']
@@ -460,9 +450,11 @@ class GraphCanvas(tk.Canvas):
             # Рисуем линию
             line_width = 3 if progress < 0.8 else 2
 
+            # Удаляем предыдущую временную линию
+            self.delete(f"edge_temp_{edge_index}")
             self.create_line(start_x, start_y, current_x, current_y,
-                        fill=color, width=line_width,
-                        tags=f"edge_temp_{edge_index}")
+                             fill=color, width=line_width,
+                             tags=f"edge_temp_{edge_index}")
 
             current_step += 1
             anim_id = self.after(15, draw_line_step)  # Уменьшено в 2 раза
@@ -488,14 +480,17 @@ class GraphCanvas(tk.Canvas):
                     y - 15  # Заканчиваем у верхней границы вершины
                 )
                 self.create_oval(loop_rect, outline=COLORS['edge_normal'], width=2,
-                               tags=f"edge_{edge_index}")
+                                 tags=f"edge_{edge_index}")
+
+                # Удаляем временный тег
+                self.delete(f"edge_temp_{edge_index}")
                 return
-            
+
             progress = current_step / steps
-            
+
             # Анимируем рисование петли от 0 до 360 градусов
             angle = 2 * math.pi * progress
-            
+
             # Вычисляем точки для части петли
             points = []
             for i in range(int(progress * 24) + 1):
@@ -503,29 +498,63 @@ class GraphCanvas(tk.Canvas):
                 px = x + (loop_width / 2) * math.cos(partial_angle)
                 py = y - 15 - loop_height + (loop_height / 2) * math.sin(partial_angle)
                 points.extend([px, py])
-            
+
             if len(points) >= 4:
                 # Цвет меняется во время анимации
                 if progress < 0.5:
                     color = COLORS['animation_pulse']
                 else:
                     color = COLORS['edge_normal']
-                
+
+                # Удаляем предыдущую временную петлю
+                self.delete(f"edge_temp_{edge_index}")
                 self.create_line(points, fill=color, width=2,
-                               tags=f"edge_temp_{edge_index}", smooth=True)
-            
+                                 tags=f"edge_temp_{edge_index}", smooth=True)
+
             current_step += 1
             anim_id = self.after(20, draw_loop_step)  # Уменьшено в 2 раза
             self.active_animations.append(anim_id)
-        
+
         draw_loop_step()
+
+    def draw_arrow(self, x, y, dx_norm, dy_norm, color, edge_index):
+        """Рисует стрелку для направленного ребра"""
+        arrow_length = 12
+        arrow_width = 8
+
+        # Точка на границе вершины
+        arrow_tip_x = x
+        arrow_tip_y = y
+
+        # Вычисляем базовые точки стрелки
+        arrow_base_x = x - dx_norm * arrow_length
+        arrow_base_y = y - dy_norm * arrow_length
+
+        # Вычисляем перпендикулярный вектор для ширины стрелки
+        perp_dx = -dy_norm * arrow_width / 2
+        perp_dy = dx_norm * arrow_width / 2
+
+        # Точки для треугольника стрелки
+        arrow_left_x = arrow_base_x + perp_dx
+        arrow_left_y = arrow_base_y + perp_dy
+        arrow_right_x = arrow_base_x - perp_dx
+        arrow_right_y = arrow_base_y - perp_dy
+
+        # Рисуем треугольник стрелки
+        self.create_polygon(
+            arrow_tip_x, arrow_tip_y,
+            arrow_left_x, arrow_left_y,
+            arrow_right_x, arrow_right_y,
+            fill=color, outline=color,
+            tags=f"arrow_{edge_index}"
+        )
 
     def redraw_vertices_only(self):
         """Рисует только вершины (для анимации)"""
         for vertex, pos in self.vertex_positions.items():
             x = (pos[0] + self.offset_x) * self.scale
             y = (pos[1] + self.offset_y) * self.scale
-            
+
             # Цвет вершины
             if vertex == self.selected_vertex:
                 vertex_color = COLORS['vertex_selected']
@@ -533,18 +562,18 @@ class GraphCanvas(tk.Canvas):
             else:
                 vertex_color = COLORS['vertex_normal']
                 border_width = 1
-            
+
             # Рисуем вершину
             self.create_oval(x - 15, y - 15,
-                           x + 15, y + 15,
-                           fill=vertex_color,
-                           outline='black',
-                           width=border_width)
-            
+                             x + 15, y + 15,
+                             fill=vertex_color,
+                             outline='black',
+                             width=border_width)
+
             # Подпись
             self.create_text(x, y, text=str(vertex),
-                           fill='white',
-                           font=('Arial', 12, 'bold'))
+                             fill='white',
+                             font=('Arial', 12, 'bold'))
 
     def arrange_vertices(self):
         """Расположение вершин"""
@@ -571,10 +600,18 @@ class GraphCanvas(tk.Canvas):
         if not self.graph or not self.vertex_positions:
             return
 
+        # Получаем свойства графа
+        is_directed = self.is_directed()
+        is_weighted = hasattr(self.graph, 'properties') and getattr(self.graph.properties, 'weighted', False)
+
+        # Временный список для стрелок (будем рисовать их после вершин)
+        arrows_to_draw = []
+
         # Сначала рисуем ребра
         for i, edge in enumerate(self.edges):
             source = edge['source']
             target = edge['target']
+            weight = edge.get('weight', 1)
 
             if source in self.vertex_positions and target in self.vertex_positions:
                 start_pos = self.vertex_positions[source]
@@ -593,6 +630,7 @@ class GraphCanvas(tk.Canvas):
                     edge_width = 2
 
                 if source == target:
+                    # Петля
                     loop_width = 18 * self.scale
                     loop_height = 25 * self.scale
                     loop_rect = (
@@ -601,50 +639,64 @@ class GraphCanvas(tk.Canvas):
                         start_x + loop_width / 2,
                         start_y
                     )
-                    self.create_oval(loop_rect, outline=edge_color, width=edge_width)
-                    
-                    # Для петель: отображаем вес рядом с петлей
-                    if hasattr(self.graph, 'properties') and getattr(self.graph.properties, 'weighted', False):
-                        weight = edge.get('weight', 1)
-                        self.create_text(start_x - loop_width/2, start_y - loop_height - 20,
-                                    text=str(weight), font=('Arial', 10, 'bold'),
-                                    fill='#333333', tags=f"weight_{i}")
+                    self.create_oval(loop_rect, outline=edge_color, width=edge_width, tags=f"edge_{i}")
+
+                    # Для петель: отображаем вес только если граф взвешенный
+                    if is_weighted:
+                        self.create_text(start_x - loop_width / 2, start_y - loop_height - 20,
+                                         text=str(weight), font=('Arial', 10, 'bold'),
+                                         fill='#333333', tags=f"weight_{i}")
                 else:
-                    # Вычисляем точки на границах вершин
+                    # Обычное ребро
                     radius = 15
                     dx = end_x - start_x
                     dy = end_y - start_y
-                    distance = math.sqrt(dx*dx + dy*dy)
-                    
+                    distance = math.sqrt(dx * dx + dy * dy)
+
                     if distance > 0:
                         # Нормализуем вектор
                         dx_norm = dx / distance
                         dy_norm = dy / distance
-                        
+
                         # Точки на границах вершин
                         adjusted_start_x = start_x + dx_norm * radius
                         adjusted_start_y = start_y + dy_norm * radius
                         adjusted_end_x = end_x - dx_norm * radius
                         adjusted_end_y = end_y - dy_norm * radius
-                        
-                        self.create_line(adjusted_start_x, adjusted_start_y, 
-                                    adjusted_end_x, adjusted_end_y,
-                                    fill=edge_color, width=edge_width)
-                        
-                        # Отображаем вес ребра (если граф взвешенный)
-                        if hasattr(self.graph, 'properties') and getattr(self.graph.properties, 'weighted', False):
+
+                        # Рисуем линию ребра
+                        self.create_line(adjusted_start_x, adjusted_start_y,
+                                         adjusted_end_x, adjusted_end_y,
+                                         fill=edge_color, width=edge_width, tags=f"edge_{i}")
+
+                        # Сохраняем информацию для рисования стрелки после вершин
+                        if is_directed and not (source == target):
+                            arrows_to_draw.append({
+                                'x': adjusted_end_x,
+                                'y': adjusted_end_y,
+                                'dx_norm': dx_norm,
+                                'dy_norm': dy_norm,
+                                'color': edge_color,
+                                'edge_index': i
+                            })
+
+                        # Отображаем вес ребра только если граф взвешенный
+                        if is_weighted:
                             # Позиция для текста веса - середина ребра
                             mid_x = (adjusted_start_x + adjusted_end_x) / 2
                             mid_y = (adjusted_start_y + adjusted_end_y) / 2
-                            
-                            # Смещаем текст немного в сторону, чтобы не перекрывал ребро
-                            offset_x = -dy_norm * 12
-                            offset_y = dx_norm * 12
-                            
-                            weight = edge.get('weight', 1)
+
+                            # Смещаем текст немного в сторону, чтобы не перекрывал ребро и стрелку
+                            offset_distance = 12
+                            if is_directed:
+                                offset_distance = 15  # Больше отступ для направленных графов
+
+                            offset_x = -dy_norm * offset_distance
+                            offset_y = dx_norm * offset_distance
+
                             self.create_text(mid_x + offset_x, mid_y + offset_y,
-                                        text=str(weight), font=('Arial', 10, 'bold'),
-                                        fill='#333333', tags=f"weight_{i}")
+                                             text=str(weight), font=('Arial', 10, 'bold'),
+                                             fill='#333333', tags=f"weight_{i}")
 
         # Рисуем вершины поверх ребер
         for vertex, pos in self.vertex_positions.items():
@@ -654,33 +706,46 @@ class GraphCanvas(tk.Canvas):
             if vertex == self.selected_vertex:
                 vertex_color = COLORS['vertex_selected']
                 border_width = 2
-                
+
                 # Статичное свечение для выбранной вершины
-                self.create_oval(x-22, y-22, x+22, y+22,
-                            outline='#FFD700',
-                            width=2)
-                self.create_oval(x-25, y-25, x+25, y+25,
-                            outline='#FFFACD',
-                            width=1)
+                self.create_oval(x - 22, y - 22, x + 22, y + 22,
+                                 outline='#FFD700',
+                                 width=2)
+                self.create_oval(x - 25, y - 25, x + 25, y + 25,
+                                 outline='#FFFACD',
+                                 width=1)
             else:
                 vertex_color = COLORS['vertex_normal']
                 border_width = 1
 
             self.create_oval(x - 15, y - 15,
-                        x + 15, y + 15,
-                        fill=vertex_color,
-                        outline='black',
-                        width=border_width)
+                             x + 15, y + 15,
+                             fill=vertex_color,
+                             outline='black',
+                             width=border_width,
+                             tags=f"vertex_{vertex}")
 
             self.create_text(x, y, text=str(vertex),
-                        fill='white',
-                        font=('Arial', 12, 'bold'))
-    
+                             fill='white',
+                             font=('Arial', 12, 'bold'),
+                             tags=f"vertex_label_{vertex}")
+
+        # Теперь рисуем стрелки поверх вершин
+        for arrow_info in arrows_to_draw:
+            self.draw_arrow(
+                arrow_info['x'],
+                arrow_info['y'],
+                arrow_info['dx_norm'],
+                arrow_info['dy_norm'],
+                arrow_info['color'],
+                arrow_info['edge_index']
+            )
+
     def on_mouse_down(self, event):
         """Нажатие мыши - блокируем если идет анимация"""
         if self.is_animating:
             return
-            
+
         self.last_mouse_pos = (event.x, event.y)
 
         clicked_vertex = None
@@ -707,7 +772,7 @@ class GraphCanvas(tk.Canvas):
         """Перетаскивание - блокируем если идет анимация"""
         if self.is_animating:
             return
-            
+
         dx = event.x - self.last_mouse_pos[0]
         dy = event.y - self.last_mouse_pos[1]
 
@@ -730,7 +795,7 @@ class GraphCanvas(tk.Canvas):
         """Правый клик для выбора - блокируем если идет анимация"""
         if self.is_animating:
             return
-            
+
         clicked_vertex = None
         graph_mouse_x = (event.x / self.scale) - self.offset_x
         graph_mouse_y = (event.y / self.scale) - self.offset_y
@@ -760,7 +825,7 @@ class GraphCanvas(tk.Canvas):
                 x2, y2 = self.vertex_positions[target]
 
                 distance = self.point_to_line_distance(graph_mouse_x, graph_mouse_y,
-                                                     x1, y1, x2, y2)
+                                                       x1, y1, x2, y2)
 
                 if distance < 20 and distance < min_distance:
                     min_distance = distance
@@ -778,90 +843,90 @@ class GraphCanvas(tk.Canvas):
         """Анимация выбора элемента"""
         old_vertex = self.selected_vertex
         old_edge = self.selected_edge
-        
+
         # Для больших графов - быстрая анимация или без анимации
-        is_large = (len(self.vertices) > self.large_graph_threshold or 
-                   len(self.edges) > self.large_edge_threshold)
-        
+        is_large = (len(self.vertices) > self.large_graph_threshold or
+                    len(self.edges) > self.large_edge_threshold)
+
         if is_large:
             # Просто меняем выбранный элемент
             self.selected_vertex = vertex
             self.selected_edge = edge
             self.redraw_graph()
-            
+
             if vertex and self.on_vertex_selected_callback:
                 self.on_vertex_selected_callback(vertex)
             elif edge is not None and self.on_edge_selected_callback:
                 edge_data = self.edges[edge]
                 self.on_edge_selected_callback((edge_data['source'], edge_data['target']))
             return
-            
+
         # Анимация снятия старого выделения
         if old_vertex:
             self.animate_deselect_vertex(old_vertex)
         elif old_edge is not None:
             self.animate_deselect_edge(old_edge)
-        
+
         # Небольшая пауза перед новым выделением
         def select_new():
             self.selected_vertex = vertex
             self.selected_edge = edge
-            
+
             # Анимация нового выделения
             if vertex:
                 self.animate_select_vertex(vertex)
             elif edge is not None:
                 self.animate_select_edge(edge)
-            
+
             self.redraw_graph()
-            
+
             if vertex and self.on_vertex_selected_callback:
                 self.on_vertex_selected_callback(vertex)
             elif edge is not None and self.on_edge_selected_callback:
                 edge_data = self.edges[edge]
                 self.on_edge_selected_callback((edge_data['source'], edge_data['target']))
-        
+
         self.after(20, select_new)  # Уменьшено в 5 раз
 
     def animate_select_vertex(self, vertex):
         """Анимация выбора вершины"""
         if vertex not in self.vertex_positions:
             return
-        
+
         pos = self.vertex_positions[vertex]
         x = (pos[0] + self.offset_x) * self.scale
         y = (pos[1] + self.offset_y) * self.scale
-        
+
         # Эффект постепенного появления свечения
         steps = 3  # Уменьшено в 2 раза
         current_step = 0
-        
+
         def glow_step():
             nonlocal current_step
             if current_step >= steps:
                 # Окончательное свечение
-                self.create_oval(x-22, y-22, x+22, y+22,
-                               outline='#FFD700',
-                               width=2,
-                               tags=f"select_glow_{vertex}")
-                self.create_oval(x-25, y-25, x+25, y+25,
-                               outline='#FFFACD',
-                               width=1,
-                               tags=f"select_glow_{vertex}")
+                self.create_oval(x - 22, y - 22, x + 22, y + 22,
+                                 outline='#FFD700',
+                                 width=2,
+                                 tags=f"select_glow_{vertex}")
+                self.create_oval(x - 25, y - 25, x + 25, y + 25,
+                                 outline='#FFFACD',
+                                 width=1,
+                                 tags=f"select_glow_{vertex}")
                 return
-            
+
             progress = current_step / steps
-            
+
             # Плавное появление свечения
             radius = 15 + 7 * progress
 
             # Рисуем плавно появляющееся свечение
             self.delete(f"select_glow_{vertex}")
             self.create_oval(x - radius, y - radius,
-                           x + radius, y + radius,
-                           outline='#FFD700',
-                           width=2,
-                           tags=f"select_glow_{vertex}")
+                             x + radius, y + radius,
+                             outline='#FFD700',
+                             width=2,
+                             tags=f"select_glow_{vertex}")
 
             current_step += 1
             anim_id = self.after(15, glow_step)  # Уменьшено в 2 раза
@@ -878,6 +943,7 @@ class GraphCanvas(tk.Canvas):
         source = edge['source']
         target = edge['target']
         weight = edge.get('weight', 1)
+        is_directed = self.is_directed()
 
         if source not in self.vertex_positions or target not in self.vertex_positions:
             return
@@ -908,21 +974,15 @@ class GraphCanvas(tk.Canvas):
                         start_x + loop_width / 2,
                         start_y
                     )
-                    self.create_oval(loop_rect, outline=COLORS['edge_selected'], 
-                                width=3,
-                                tags=f"select_edge_{edge_index}")
-                    
-                    # Для петель: отображаем вес выбранным цветом
-                    if hasattr(self.graph, 'properties') and getattr(self.graph.properties, 'weighted', False):
-                        self.create_text(start_x - loop_width/2, start_y - loop_height - 20,
-                                    text=str(weight), font=('Arial', 10, 'bold'),
-                                    fill=COLORS['edge_selected'], tags=f"weight_{edge_index}")
+                    self.create_oval(loop_rect, outline=COLORS['edge_selected'],
+                                     width=3,
+                                     tags=f"select_edge_{edge_index}")
                 else:
                     # Вычисляем точки на границах вершин
                     radius = 15
                     dx = end_x - start_x
                     dy = end_y - start_y
-                    distance = math.sqrt(dx*dx + dy*dy)
+                    distance = math.sqrt(dx * dx + dy * dy)
 
                     if distance > 0:
                         dx_norm = dx / distance
@@ -932,23 +992,18 @@ class GraphCanvas(tk.Canvas):
                         adjusted_start_y = start_y + dy_norm * radius
                         adjusted_end_x = end_x - dx_norm * radius
                         adjusted_end_y = end_y - dy_norm * radius
-                        
+
+                        # Рисуем ребро
                         self.create_line(adjusted_start_x, adjusted_start_y,
-                                    adjusted_end_x, adjusted_end_y,
-                                    fill=COLORS['edge_selected'], 
-                                    width=3,
-                                    tags=f"select_edge_{edge_index}")
-                        
-                        # Если граф взвешенный, отображаем вес выбранным цветом
-                        if hasattr(self.graph, 'properties') and getattr(self.graph.properties, 'weighted', False):
-                            mid_x = (adjusted_start_x + adjusted_end_x) / 2
-                            mid_y = (adjusted_start_y + adjusted_end_y) / 2
-                            offset_x = -dy_norm * 12
-                            offset_y = dx_norm * 12
-                            
-                            self.create_text(mid_x + offset_x, mid_y + offset_y,
-                                        text=str(weight), font=('Arial', 10, 'bold'),
-                                        fill=COLORS['edge_selected'], tags=f"weight_{edge_index}")
+                                         adjusted_end_x, adjusted_end_y,
+                                         fill=COLORS['edge_selected'],
+                                         width=3,
+                                         tags=f"select_edge_{edge_index}")
+
+                        # Рисуем стрелку для направленных графов
+                        if is_directed:
+                            self.draw_arrow(adjusted_end_x, adjusted_end_y, dx_norm, dy_norm,
+                                            COLORS['edge_selected'], f"select_arrow_{edge_index}")
                 return
 
             progress = current_step / steps
@@ -967,15 +1022,15 @@ class GraphCanvas(tk.Canvas):
                     start_x + loop_width / 2,
                     start_y
                 )
-                self.create_oval(loop_rect, outline=COLORS['edge_selected'], 
-                            width=int(width)+1,
-                            tags=f"select_edge_{edge_index}")
+                self.create_oval(loop_rect, outline=COLORS['edge_selected'],
+                                 width=int(width) + 1,
+                                 tags=f"select_edge_{edge_index}")
             else:
                 # Вычисляем точки на границах вершин
                 radius = 15
                 dx = end_x - start_x
                 dy = end_y - start_y
-                distance = math.sqrt(dx*dx + dy*dy)
+                distance = math.sqrt(dx * dx + dy * dy)
 
                 if distance > 0:
                     dx_norm = dx / distance
@@ -987,10 +1042,10 @@ class GraphCanvas(tk.Canvas):
                     adjusted_end_y = end_y - dy_norm * radius
 
                     self.create_line(adjusted_start_x, adjusted_start_y,
-                                adjusted_end_x, adjusted_end_y,
-                                fill=COLORS['edge_selected'], 
-                                width=int(width)+1,
-                                tags=f"select_edge_{edge_index}")
+                                     adjusted_end_x, adjusted_end_y,
+                                     fill=COLORS['edge_selected'],
+                                     width=int(width) + 1,
+                                     tags=f"select_edge_{edge_index}")
 
             current_step += 1
             anim_id = self.after(20, thicken_step)  # Уменьшено в 2 раза
@@ -1030,6 +1085,7 @@ class GraphCanvas(tk.Canvas):
             nonlocal current_step
             if current_step >= steps:
                 self.delete(f"select_edge_{edge_index}")
+                self.delete(f"select_arrow_{edge_index}")
                 return
 
             current_step += 1
@@ -1058,7 +1114,7 @@ class GraphCanvas(tk.Canvas):
         """Масштабирование с плавной анимацией - блокируем если идет анимация"""
         if self.is_animating:
             return
-            
+
         # Получаем текущий центр окна
         canvas_center_x = self.winfo_width() / 2
         canvas_center_y = self.winfo_height() / 2
@@ -1131,7 +1187,7 @@ class GraphCanvas(tk.Canvas):
         """Выбор вершины с анимацией"""
         if self.is_animating:
             return
-            
+
         self.deselect_all()
         self.selected_vertex = vertex
         self.animate_select_vertex(vertex)
@@ -1144,7 +1200,7 @@ class GraphCanvas(tk.Canvas):
         """Выбор ребра с анимацией"""
         if self.is_animating:
             return
-            
+
         self.deselect_all()
         self.selected_edge = edge_index
         self.animate_select_edge(edge_index)
@@ -1401,7 +1457,7 @@ class GraphVisualizerApp:
     def __init__(self, parent_frame, embedded=False):
         """
         Инициализация приложения визуализатора
-        
+
         Args:
             parent_frame: Родительский фрейм для встраивания
             embedded: Флаг, указывающий что приложение встроено в другое
@@ -1412,11 +1468,11 @@ class GraphVisualizerApp:
             self.embedded = True
             self.main_container = tk.Frame(parent_frame, bg=COLORS['bg_main'])
             self.main_container.pack(fill='both', expand=True, padx=5, pady=5)
-            
+
             # Настраиваем адаптивность
             self.main_container.grid_rowconfigure(0, weight=1)
             self.main_container.grid_columnconfigure(0, weight=1)
-            
+
             self.setup_container = self.main_container
         else:
             # Если запущено отдельно
@@ -1433,7 +1489,7 @@ class GraphVisualizerApp:
         self.explorer = None
 
         self.create_widgets()
-        
+
         if not embedded:
             self.load_recent_file()
             self.run()
@@ -1476,10 +1532,10 @@ class GraphVisualizerApp:
         button_frame.pack(fill='x', padx=10, pady=10)
 
         # Заголовок панели управления
-        title_label = tk.Label(button_frame, text="Управление", 
-                              font=('Arial', 12, 'bold'),
-                              bg=COLORS['bg_main'],
-                              fg=COLORS['text'])
+        title_label = tk.Label(button_frame, text="Управление",
+                               font=('Arial', 12, 'bold'),
+                               bg=COLORS['bg_main'],
+                               fg=COLORS['text'])
         title_label.pack(pady=(0, 10))
 
         buttons = [
@@ -1487,14 +1543,14 @@ class GraphVisualizerApp:
             ("Открыть ZIP архив", self.open_zip_archive),
             ("Центрировать граф", self.center_graph),
         ]
-        
+
         # Если не встроено, добавляем кнопку выхода
         if not self.embedded:
             buttons.append(("Выход", self.root.quit))
 
         for text, command in buttons:
-            btn = StyledButton(button_frame, text=text, command=command, 
-                              width=220, height=45)
+            btn = StyledButton(button_frame, text=text, command=command,
+                               width=220, height=45)
             btn.pack(pady=8)
 
     def create_graph_info_panel(self, parent):
@@ -1508,10 +1564,10 @@ class GraphVisualizerApp:
         title_frame.pack(fill='x')
         title_frame.pack_propagate(False)
 
-        title_label = tk.Label(title_frame, text="Информация о графе", 
-                              font=('Arial', 11, 'bold'),
-                              bg=COLORS['border'],
-                              fg=COLORS['text'])
+        title_label = tk.Label(title_frame, text="Информация о графе",
+                               font=('Arial', 11, 'bold'),
+                               bg=COLORS['border'],
+                               fg=COLORS['text'])
         title_label.pack(pady=5)
 
         # Текстовое поле
@@ -1534,10 +1590,10 @@ class GraphVisualizerApp:
         title_frame.pack(fill='x')
         title_frame.pack_propagate(False)
 
-        title_label = tk.Label(title_frame, text="Архив графов", 
-                              font=('Arial', 11, 'bold'),
-                              bg=COLORS['border'],
-                              fg=COLORS['text'])
+        title_label = tk.Label(title_frame, text="Архив графов",
+                               font=('Arial', 11, 'bold'),
+                               bg=COLORS['border'],
+                               fg=COLORS['text'])
         title_label.pack(pady=5)
 
         self.browser = GraphBrowser(self.browser_frame)
@@ -1556,10 +1612,10 @@ class GraphVisualizerApp:
         title_frame.pack(fill='x')
         title_frame.pack_propagate(False)
 
-        title_label = tk.Label(title_frame, text="Выбранный элемент", 
-                              font=('Arial', 11, 'bold'),
-                              bg=COLORS['border'],
-                              fg=COLORS['text'])
+        title_label = tk.Label(title_frame, text="Выбранный элемент",
+                               font=('Arial', 11, 'bold'),
+                               bg=COLORS['border'],
+                               fg=COLORS['text'])
         title_label.pack(pady=5)
 
         self.selection_info_text = scrolledtext.ScrolledText(selection_frame,
@@ -1567,8 +1623,8 @@ class GraphVisualizerApp:
                                                              font=('Arial', 9),
                                                              state='disabled',
                                                              bg='white',
-                                                         relief='flat',
-                                                         bd=1)
+                                                             relief='flat',
+                                                             bd=1)
         self.selection_info_text.pack(fill='both', expand=True)
 
         self.on_deselect()
@@ -1729,7 +1785,7 @@ class GraphVisualizerApp:
             return
 
         source, target = edge
-        
+
         # Получаем вес ребра
         weight = 1
         for e in self.canvas.edges:
@@ -1739,12 +1795,12 @@ class GraphVisualizerApp:
 
         text = f"""РЕБРО: {source} → {target}
 
-    ИНФОРМАЦИЯ:
-    • Источник: {source}
-    • Цель: {target}
-    • Тип: {'Петля' if source == target else 'Обычное ребро'}
-    • Направленное: {self.canvas.is_directed()}
-    • Вес: {weight}"""
+ИНФОРМАЦИЯ:
+• Источник: {source}
+• Цель: {target}
+• Тип: {'Петля' if source == target else 'Обычное ребро'}
+• Направленное: {self.canvas.is_directed()}
+• Вес: {weight}"""
 
         self.selection_info_text.config(state='normal')
         self.selection_info_text.delete(1.0, tk.END)
