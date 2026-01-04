@@ -225,6 +225,7 @@ class GraphCanvas(tk.Canvas):
         self.vertex_animations = {}
         self.edge_animations = {}
         self.glow_effects = {}
+        self._animated_edges = set()  # Множество для отслеживания анимированных ребер
 
         for edge in self.edges:
             if 'weight' in edge:
@@ -365,6 +366,23 @@ class GraphCanvas(tk.Canvas):
 
         if source not in self.vertex_positions or target not in self.vertex_positions:
             return
+
+        # Пропускаем дублирующиеся ребра в анимации
+        is_directed = self.is_directed()
+        if is_directed:
+            edge_key = (source, target)
+        else:
+            edge_key = (min(source, target), max(source, target))
+
+        # Если мы уже видели это ребро (или его обратную сторону для ненаправленных),
+        # пропускаем анимацию
+        if hasattr(self, '_animated_edges'):
+            if edge_key in self._animated_edges:
+                return
+            else:
+                self._animated_edges.add(edge_key)
+        else:
+            self._animated_edges = {edge_key}
 
         start_pos = self.vertex_positions[source]
         end_pos = self.vertex_positions[target]
@@ -607,11 +625,26 @@ class GraphCanvas(tk.Canvas):
         # Временный список для стрелок (будем рисовать их после вершин)
         arrows_to_draw = []
 
+        # Множество для отслеживания уже отрисованных ребер
+        drawn_edges = set()
+
         # Сначала рисуем ребра
         for i, edge in enumerate(self.edges):
             source = edge['source']
             target = edge['target']
             weight = edge.get('weight', 1)
+
+            # Создаем ключ для ребра (для ненаправленных графов порядок не важен)
+            if is_directed:
+                edge_key = (source, target)
+            else:
+                edge_key = (min(source, target), max(source, target))
+
+            # Пропускаем дублирующиеся ребра
+            if edge_key in drawn_edges:
+                continue
+
+            drawn_edges.add(edge_key)
 
             if source in self.vertex_positions and target in self.vertex_positions:
                 start_pos = self.vertex_positions[source]
