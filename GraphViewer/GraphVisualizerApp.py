@@ -201,6 +201,7 @@ class GraphCanvas(tk.Canvas):
         self.vertex_animations = {}
         self.edge_animations = {}
         self.glow_effects = {}
+        self._animated_edges = set()  # Множество для отслеживания анимированных ребер
 
         for edge in self.edges:
             if 'weight' in edge:
@@ -338,10 +339,26 @@ class GraphCanvas(tk.Canvas):
         """Анимация рисования одного ребра"""
         source = edge['source']
         target = edge['target']
-        weight = edge.get('weight', 1)
 
         if source not in self.vertex_positions or target not in self.vertex_positions:
             return
+
+        # Пропускаем дублирующиеся ребра в анимации
+        is_directed = self.is_directed()
+        if is_directed:
+            edge_key = (source, target)
+        else:
+            edge_key = (min(source, target), max(source, target))
+
+        # Если мы уже видели это ребро (или его обратную сторону для ненаправленных),
+        # пропускаем анимацию
+        if hasattr(self, '_animated_edges'):
+            if edge_key in self._animated_edges:
+                return
+            else:
+                self._animated_edges.add(edge_key)
+        else:
+            self._animated_edges = {edge_key}
 
         start_pos = self.vertex_positions[source]
         end_pos = self.vertex_positions[target]
@@ -360,7 +377,7 @@ class GraphCanvas(tk.Canvas):
 
         if source == target:
             # Для петель
-            self.animate_loop_drawing(start_x, start_y, edge_index, weight, is_weighted)
+            self.animate_loop_drawing(start_x, start_y, edge_index)
         else:
             # Для обычных ребер
             dx = end_x - start_x
@@ -379,10 +396,10 @@ class GraphCanvas(tk.Canvas):
                 adjusted_end_y = end_y - dy_norm * radius
 
                 self.animate_line_drawing(adjusted_start_x, adjusted_start_y,
-                                          adjusted_end_x, adjusted_end_y, edge_index, weight, is_weighted, is_directed,
+                                          adjusted_end_x, adjusted_end_y, edge_index, is_weighted, is_directed,
                                           dx_norm, dy_norm)
 
-    def animate_line_drawing(self, start_x, start_y, end_x, end_y, edge_index, weight, is_weighted, is_directed,
+    def animate_line_drawing(self, start_x, start_y, end_x, end_y, edge_index, is_weighted, is_directed,
                              dx_norm, dy_norm):
         """Анимация рисования линии ребра"""
         steps = 8  # Уменьшено в 1.25 раза
@@ -439,7 +456,7 @@ class GraphCanvas(tk.Canvas):
 
         draw_line_step()
 
-    def animate_loop_drawing(self, x, y, edge_index, weight, is_weighted):
+    def animate_loop_drawing(self, x, y, edge_index):
         """Анимация рисования петли"""
         steps = 15  # Уменьшено почти в 2 раза
         current_step = 0
@@ -586,11 +603,26 @@ class GraphCanvas(tk.Canvas):
         # Временный список для стрелок (будем рисовать их после вершин)
         arrows_to_draw = []
 
+        # Множество для отслеживания уже отрисованных ребер
+        drawn_edges = set()
+
         # Сначала рисуем ребра
         for i, edge in enumerate(self.edges):
             source = edge['source']
             target = edge['target']
             weight = edge.get('weight', 1)
+
+            # Создаем ключ для ребра (для ненаправленных графов порядок не важен)
+            if is_directed:
+                edge_key = (source, target)
+            else:
+                edge_key = (min(source, target), max(source, target))
+
+            # Пропускаем дублирующиеся ребра
+            if edge_key in drawn_edges:
+                continue
+
+            drawn_edges.add(edge_key)
 
             if source in self.vertex_positions and target in self.vertex_positions:
                 start_pos = self.vertex_positions[source]
@@ -1809,3 +1841,8 @@ class GraphVisualizerApp:
     def run(self):
         """Запускает приложение"""
         self.root.mainloop()
+
+
+if __name__ == "__main__":
+    app = GraphVisualizerApp()
+    app.run()
